@@ -141,13 +141,13 @@ export default function LandingPage() {
             <div className="space-y-4">
               <h4 className="text-sm font-bold uppercase tracking-wider">Company</h4>
               <nav className="flex flex-col gap-2">
-                <Link className="text-sm text-muted-foreground hover:text-primary" href="#">
+                <Link className="text-sm text-muted-foreground hover:text-primary transition-colors" href="/about">
                   About
                 </Link>
-                <Link className="text-sm text-muted-foreground hover:text-primary" href="#">
+                <Link className="text-sm text-muted-foreground hover:text-primary transition-colors" href="/privacy">
                   Privacy
                 </Link>
-                <Link className="text-sm text-muted-foreground hover:text-primary" href="#">
+                <Link className="text-sm text-muted-foreground hover:text-primary transition-colors" href="/terms">
                   Terms
                 </Link>
               </nav>
