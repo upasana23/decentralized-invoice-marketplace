@@ -1,79 +1,128 @@
+// app/dashboard/msme/page.tsx
 "use client";
-
-import { useEffect } from "react";
-import { ethers } from "ethers";
-import { getInvoiceContract } from "@/lib/contracts/getInvoiceContract";
-
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { useAccount } from "wagmi";
+import { FileText, TrendingUp, Clock, Wallet, PlusCircle } from "lucide-react";
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  FileText,
-  TrendingUp,
-  Clock,
-  Wallet,
-  PlusCircle,
-  CheckCircle2,
-  AlertCircle,
-} from "lucide-react";
-import Link from "next/link";
+import { Skeleton } from "@/components/ui/skeleton";
+import { fetchInvoicesByMSME, Invoice } from "@/lib/invoice";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function MSMEDashboard() {
-  // 🔹 READ-ONLY BLOCKCHAIN CALL (CORRECT)
+  const { address, isConnected } = useAccount();
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
   useEffect(() => {
-    const readFromBlockchain = async () => {
-      if (!window.ethereum) return;
+    const loadInvoices = async () => {
+      if (!isConnected || !address) {
+        setIsLoading(false);
+        return;
+      }
 
       try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const contract = getInvoiceContract(provider);
-
-        // ✅ VALID function from your contract
-        const nextId = await contract.nextInvoiceId();
-        console.log("Next invoice ID:", nextId.toString());
-      } catch (err) {
-        console.error("Blockchain read failed:", err);
+        setIsLoading(true);
+        const msmeInvoices = await fetchInvoicesByMSME(address);
+        setInvoices(msmeInvoices);
+      } catch (error) {
+        console.error(error);
+        toast({
+          title: "Error",
+          description: "Failed to load invoices",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    readFromBlockchain();
-  }, []);
+    loadInvoices();
+  }, [address, isConnected, toast]);
 
+  // Calculate stats
   const stats = [
-    { label: "Total Invoices Issued", value: "12", icon: FileText, color: "text-blue-500" },
-    { label: "Active Funding", value: "$45,200", icon: TrendingUp, color: "text-primary" },
-    { label: "Pending Verification", value: "3", icon: Clock, color: "text-amber-500" },
-    { label: "Available Payout", value: "$12,850", icon: Wallet, color: "text-emerald-500" },
+    {
+      label: "Total Invoices",
+      value: invoices.length.toString(),
+      icon: FileText,
+      color: "text-blue-500",
+    },
+    {
+      label: "Total Value",
+      value: `${invoices
+        .reduce((sum, inv) => sum + parseFloat(inv.amount), 0)
+        .toFixed(2)} MATIC`,
+      icon: TrendingUp,
+      color: "text-green-500",
+    },
+    {
+      label: "Fundraising",
+      value: invoices.filter((inv) => inv.status === 1).length.toString(),
+      icon: Clock,
+      color: "text-amber-500",
+    },
+    {
+      label: "Funded",
+      value: `${invoices
+        .filter((inv) => inv.status === 2)
+        .reduce((sum, inv) => sum + parseFloat(inv.fundedAmount), 0)
+        .toFixed(2)} MATIC`,
+      icon: Wallet,
+      color: "text-purple-500",
+    },
   ];
+
+  const getStatusBadge = (status: number) => {
+    const statusMap = {
+      1: { label: "Fundraising", variant: "outline" as const },
+      2: { label: "Funded", variant: "default" as const },
+      3: { label: "Repaid", variant: "secondary" as const },
+      4: { label: "Defaulted", variant: "destructive" as const },
+    };
+    const { label, variant } = statusMap[status as keyof typeof statusMap] || { 
+      label: "Unknown", 
+      variant: "outline" as const 
+    };
+    return <Badge variant={variant}>{label}</Badge>;
+  };
+
+  const formatAddress = (addr: string) => 
+    `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <Wallet className="h-12 w-12 text-muted-foreground" />
+        <h3 className="text-lg font-medium">Connect your wallet</h3>
+        <p className="text-sm text-muted-foreground text-center max-w-md">
+          Connect your wallet to view your MSME dashboard and manage invoices.
+        </p>
+        <Button asChild>
+          <Link href="/connect">Connect Wallet</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">MSME Dashboard</h1>
-          <p className="text-muted-foreground">
-            Manage your invoices and liquidity status.
-          </p>
-        </div>
-
-        <Link href="/dashboard/msme/tokenize">
-          <Button className="gap-2">
-            <PlusCircle className="size-4" />
-            Tokenize New Invoice
-          </Button>
-        </Link>
-      </div>
-
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.label} className="border-border/50 bg-card/50">
+        {stats.map((stat, i) => (
+          <Card key={i}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
                 {stat.label}
               </CardTitle>
-              <stat.icon className={`size-4 ${stat.color}`} />
+              <stat.icon className={`h-4 w-4 ${stat.color}`} />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stat.value}</div>
@@ -82,129 +131,96 @@ export default function MSMEDashboard() {
         ))}
       </div>
 
-      {/* Content */}
-      <div className="grid gap-6 md:grid-cols-7">
-        {/* Invoices */}
-        <Card className="md:col-span-4 border-border/50 bg-card/50">
-          <CardHeader>
-            <CardTitle>Recent Active Invoices</CardTitle>
-            <CardDescription>
-              Track the status of your recently tokenized invoices.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+      {/* Invoices */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Your Invoices</h2>
+            <p className="text-sm text-muted-foreground">
+              Manage your tokenized invoices
+            </p>
+          </div>
+          <Button asChild>
+            <Link href="/dashboard/msme/tokenize">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Create Invoice
+            </Link>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {invoices.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 space-y-4">
+              <FileText className="h-12 w-12 text-muted-foreground" />
+              <h3 className="text-lg font-medium">No invoices yet</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                Get started by creating your first invoice to receive early payments.
+              </p>
+              <Button asChild>
+                <Link href="/dashboard/msme/tokenize">Create Invoice</Link>
+              </Button>
+            </div>
+          ) : (
             <div className="space-y-4">
-              {[
-                {
-                  id: "INV-2025-001",
-                  buyer: "Global Retail Corp",
-                  amount: "$12,500",
-                  status: "Funded",
-                  date: "Dec 20, 2025",
-                },
-                {
-                  id: "INV-2025-004",
-                  buyer: "TechFlow Systems",
-                  amount: "$8,200",
-                  status: "Verified",
-                  date: "Dec 24, 2025",
-                },
-                {
-                  id: "INV-2025-009",
-                  buyer: "Nexa Logistics",
-                  amount: "$15,000",
-                  status: "In Verification",
-                  date: "Dec 25, 2025",
-                },
-              ].map((invoice) => (
+              {invoices.map((invoice) => (
                 <div
                   key={invoice.id}
-                  className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-background/50"
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                 >
                   <div className="space-y-1">
-                    <p className="font-medium">
-                      {invoice.id} - {invoice.buyer}
+                    <div className="flex items-center space-x-2">
+                      <h3 className="font-medium">Invoice #{invoice.id}</h3>
+                      {getStatusBadge(invoice.status)}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Buyer: {formatAddress(invoice.buyer)}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      Due: {invoice.date}
+                    <p className="text-sm text-muted-foreground">
+                      Due: {invoice.dueDate.toLocaleDateString()}
                     </p>
                   </div>
-                  <div className="text-right space-y-1">
-                    <p className="font-bold">{invoice.amount}</p>
-                    <Badge
-                      variant={
-                        invoice.status === "Funded"
-                          ? "default"
-                          : "secondary"
-                      }
-                    >
-                      {invoice.status}
-                    </Badge>
+                  <div className="text-right">
+                    <p className="font-semibold">{invoice.amount} MATIC</p>
+                    <p className="text-sm text-muted-foreground">
+                      Funded: {invoice.fundedAmount} MATIC
+                    </p>
                   </div>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
-        {/* Reputation */}
-        <Card className="md:col-span-3 border-border/50 bg-card/50">
-          <CardHeader>
-            <CardTitle>Reputation Score</CardTitle>
-            <CardDescription>
-              Your creditworthiness on the protocol.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center justify-center py-6">
-            <div className="relative size-32 mb-4">
-              <svg className="size-full" viewBox="0 0 100 100">
-                <circle
-                  className="text-muted stroke-current"
-                  strokeWidth="8"
-                  fill="transparent"
-                  r="40"
-                  cx="50"
-                  cy="50"
-                />
-                <circle
-                  className="text-primary stroke-current"
-                  strokeWidth="8"
-                  strokeDasharray="251.2"
-                  strokeDashoffset="50.2"
-                  strokeLinecap="round"
-                  fill="transparent"
-                  r="40"
-                  cx="50"
-                  cy="50"
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center flex-col">
-                <span className="text-2xl font-bold">842</span>
-                <span className="text-[10px] text-muted-foreground">
-                  EXCELLENT
-                </span>
-              </div>
-            </div>
-
-            <div className="w-full space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground flex items-center gap-1">
-                  <CheckCircle2 className="size-3 text-emerald-500" />
-                  On-time Settlement
-                </span>
-                <span className="font-medium">98%</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground flex items-center gap-1">
-                  <AlertCircle className="size-3 text-primary" />
-                  Risk Category
-                </span>
-                <span className="font-medium">Low (Tier A)</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <Card key={i}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-4 rounded-full" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-8 w-24" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-4 w-64" />
+        </CardHeader>
+        <CardContent>
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full mb-4" />
+          ))}
+        </CardContent>
+      </Card>
     </div>
   );
 }
