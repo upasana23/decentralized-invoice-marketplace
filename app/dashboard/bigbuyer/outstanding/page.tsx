@@ -57,7 +57,7 @@ export default function BigBuyerOutstandingPage() {
     loadInvoices()
   }, [address, isConnected, toast])
 
-  const handleRepay = async (invoiceId: number, amount: string) => {
+  const handleRepay = async (invoiceId: number) => {
     if (!walletClient || !address) {
       toast({
         title: "Error",
@@ -76,8 +76,16 @@ export default function BigBuyerOutstandingPage() {
         InvoiceMarketplaceABI.abi,
         signer
       )
-      const amountWei = ethers.parseEther(amount)
-      const tx = await contract.repayInvoice(invoiceId, { value: amountWei })
+
+      // Fetch latest on-chain invoice data to compute principal + yield
+      const onchainInvoice = await contract.invoices(invoiceId)
+      const principalWei: bigint = onchainInvoice.amount
+      const discountRateBps: bigint = onchainInvoice.discountRate
+
+      const tenThousand = BigInt(10000)
+      const totalOwedWei = principalWei + (principalWei * discountRateBps) / tenThousand
+
+      const tx = await contract.repayInvoice(invoiceId, { value: totalOwedWei })
       await tx.wait()
 
       toast({
@@ -245,7 +253,7 @@ export default function BigBuyerOutstandingPage() {
                             <Button
                               size="sm"
                               variant="default"
-                              onClick={() => handleRepay(invoice.id, invoice.amount)}
+                              onClick={() => handleRepay(invoice.id)}
                               disabled={repaying === invoice.id}
                             >
                               <CreditCard className="size-3 mr-1" />

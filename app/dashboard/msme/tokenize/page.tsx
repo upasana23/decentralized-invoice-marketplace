@@ -104,8 +104,8 @@ export default function TokenizeInvoice() {
         description: "Invoice created successfully on the blockchain.",
       })
       
-      // Redirect to invoices list
-      router.push("/dashboard/msme/invoices")
+      // Redirect to active invoices list
+      router.push("/dashboard/msme/active")
       
     } catch (error: any) {
       console.error("Error creating invoice:", error)
