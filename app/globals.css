@@ -159,3 +159,30 @@
   opacity: 0.6;
 }
 
+@keyframes float-coin {
+  0% {
+    transform: translateY(0) translateX(0) scale(0.95);
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  50% {
+    transform: translateY(-40px) translateX(6px) scale(1.05);
+  }
+
+  80% {
+    transform: translateY(-70px) translateX(-6px) scale(1.08);
+  }
+
+  100% {
+    transform: translateY(-100px) translateX(0) scale(1.1);
+    opacity: 0;
+  }
+}
+
+.animate-float-coin {
+  animation: float-coin 4s ease-in-out infinite;
+}

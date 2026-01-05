@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button"
 // import Web3Background from "@/components/Web3Background"
 import { ArrowRight, ShieldCheck, Zap, Globe, Github, Twitter, Linkedin } from "lucide-react"
 import Link from "next/link"
+import CentralAnimation from "@/components/CentralAnimation"
 
 export default function LandingPage() {
   return (
@@ -97,6 +98,7 @@ export default function LandingPage() {
         >
           <div className="absolute inset-0 bg-black/40"></div>
 
+          <CentralAnimation />
 
          <div className="container px-4 md:px-6 relative z-10">
            <div className="flex flex-col items-start space-y-6">
