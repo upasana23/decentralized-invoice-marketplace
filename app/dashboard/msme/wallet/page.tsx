@@ -24,6 +24,7 @@ export default function MSMEWalletPage() {
   const publicClient = usePublicClient()
   const { data: balanceData, isLoading: isLoadingBalance, refetch: refetchBalance } = useBalance({
     address: address,
+    token: '0x1234567890abcdef', // Replace with actual POL token address
   })
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [isLoadingInvoices, setIsLoadingInvoices] = useState(true)
@@ -114,16 +115,16 @@ export default function MSMEWalletPage() {
               <Wallet className="size-5 text-primary" />
               Wallet Balance
             </CardTitle>
-            <CardDescription>Your native MATIC balance</CardDescription>
+            <CardDescription>Your native POL balance</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground mb-1">MATIC Balance</p>
+              <p className="text-sm text-muted-foreground mb-1">POL Balance</p>
               {isLoadingBalance ? (
                 <Skeleton className="h-12 w-48" />
               ) : (
                 <p className="text-4xl font-bold">
-                  {balanceData ? parseFloat(formatEther(balanceData.value)).toFixed(4) : "0.0000"} MATIC
+                  {balanceData ? parseFloat(formatEther(BigInt(balanceData.value))).toFixed(4) : "0.0000"} POL
                 </p>
               )}
             </div>
@@ -247,7 +248,7 @@ export default function MSMEWalletPage() {
             </div>
             <div>
               <p className="text-sm font-medium mb-1">Currency</p>
-              <p className="text-sm text-muted-foreground">MATIC (Polygon native token)</p>
+              <p className="text-sm text-muted-foreground">POL (Polygon native token)</p>
             </div>
             <div>
               <p className="text-sm font-medium mb-1">Block Explorer</p>
@@ -266,4 +267,3 @@ export default function MSMEWalletPage() {
     </div>
   )
 }
-

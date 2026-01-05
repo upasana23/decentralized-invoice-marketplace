@@ -112,10 +112,10 @@ export default function DashboardLayout({
     <BreadcrumbItem>
       <BreadcrumbPage>
         {user.role === "msme"
-          ? "MSME Portal"
+          ? "MSME Portal - POL"
           : user.role === "investor"
-          ? "Investor Portal"
-          : "Big Buyer Portal"}
+          ? "Investor Portal - POL"
+          : "Big Buyer Portal - POL"}
       </BreadcrumbPage>
     </BreadcrumbItem>
   </BreadcrumbList>

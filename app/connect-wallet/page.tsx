@@ -26,10 +26,10 @@ export default function ConnectWalletPage() {
 
   // Redirect if user already has wallet bound
   useEffect(() => {
-    if (!authLoading && user?.walletAddress) {
+    if (!authLoading && user?.walletAddress && isConnected) {
       redirectToDashboard();
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, isConnected]);
 
   // Handle wallet connection and save
   useEffect(() => {
