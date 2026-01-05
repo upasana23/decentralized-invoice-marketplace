@@ -1,18 +1,19 @@
 // app/dashboard/msme/page.tsx
 "use client";
 import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
 import { FileText, TrendingUp, Clock, Wallet, PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchInvoicesByMSME, Invoice } from "@/lib/invoice";
+import { fetchInvoicesByMSME, Invoice, getStatusLabel } from "@/lib/invoice";
 import { useToast } from "@/components/ui/use-toast";
 
 export default function MSMEDashboard() {
   const { address, isConnected } = useAccount();
+  const publicClient = usePublicClient();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
@@ -26,7 +27,7 @@ export default function MSMEDashboard() {
 
       try {
         setIsLoading(true);
-        const msmeInvoices = await fetchInvoicesByMSME(address);
+        const msmeInvoices = await fetchInvoicesByMSME(address, publicClient || undefined);
         setInvoices(msmeInvoices);
       } catch (error) {
         console.error(error);
@@ -41,7 +42,7 @@ export default function MSMEDashboard() {
     };
 
     loadInvoices();
-  }, [address, isConnected, toast]);
+  }, [address, isConnected, publicClient, toast]);
 
   // Calculate stats
   const stats = [
@@ -77,17 +78,15 @@ export default function MSMEDashboard() {
   ];
 
   const getStatusBadge = (status: number) => {
+    const statusLabel = getStatusLabel(status);
     const statusMap = {
-      1: { label: "Fundraising", variant: "outline" as const },
-      2: { label: "Funded", variant: "default" as const },
-      3: { label: "Repaid", variant: "secondary" as const },
-      4: { label: "Defaulted", variant: "destructive" as const },
+      "Fundraising": { variant: "outline" as const },
+      "Funded": { variant: "default" as const },
+      "Repaid": { variant: "secondary" as const },
+      "Defaulted": { variant: "destructive" as const },
     };
-    const { label, variant } = statusMap[status as keyof typeof statusMap] || { 
-      label: "Unknown", 
-      variant: "outline" as const 
-    };
-    return <Badge variant={variant}>{label}</Badge>;
+    const { variant } = statusMap[statusLabel] || { variant: "outline" as const };
+    return <Badge variant={variant}>{statusLabel}</Badge>;
   };
 
   const formatAddress = (addr: string) => 

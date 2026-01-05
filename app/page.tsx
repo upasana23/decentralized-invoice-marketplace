@@ -1,12 +1,12 @@
 import { Button } from "@/components/ui/button"
-import Web3Background from "@/components/Web3Background"
+// import Web3Background from "@/components/Web3Background"
 import { ArrowRight, ShieldCheck, Zap, Globe, Github, Twitter, Linkedin } from "lucide-react"
 import Link from "next/link"
 
 export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-screen">
-      <Web3Background />
+      {/* <Web3Background /> */}
 
       {/* Header */}
       <header className="px-4 lg:px-6 h-16 flex items-center border-b border-border/50 backdrop-blur-md sticky top-0 z-50">

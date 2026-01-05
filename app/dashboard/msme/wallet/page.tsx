@@ -1,26 +1,110 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useAccount, useBalance, usePublicClient } from "wagmi"
+import { formatEther } from "viem"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Wallet, Download, ExternalLink } from "lucide-react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Wallet, ExternalLink, Copy, Check } from "lucide-react"
+import { fetchInvoicesByMSME, Invoice } from "@/lib/invoice"
+import { useToast } from "@/components/ui/use-toast"
+import Link from "next/link"
 
-const transactions = [
-  { id: "0x3f8a...2c9d", type: "Invoice Funded", amount: 10625, date: "2024-12-20 10:45", status: "Completed" },
-  { id: "0x7b2e...5a1c", type: "Withdrawal", amount: -5000, date: "2024-12-18 14:22", status: "Completed" },
-  { id: "0x9d4c...8f3b", type: "Invoice Funded", amount: 7380, date: "2024-12-15 09:30", status: "Completed" },
-  { id: "0x1a6f...4e2d", type: "Invoice Funded", amount: 13500, date: "2024-12-12 11:15", status: "Completed" },
-  { id: "0x5c8b...7a9e", type: "Withdrawal", amount: -8000, date: "2024-12-10 16:40", status: "Completed" },
-  { id: "0x2e7d...3b4f", type: "Invoice Funded", amount: 8820, date: "2024-12-08 13:25", status: "Completed" },
-]
+function formatAddress(addr: string) {
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+}
+
+function formatFullAddress(addr: string) {
+  return `${addr.slice(0, 10)}...${addr.slice(-8)}`
+}
 
 export default function MSMEWalletPage() {
+  const { address, isConnected } = useAccount()
+  const publicClient = usePublicClient()
+  const { data: balanceData, isLoading: isLoadingBalance, refetch: refetchBalance } = useBalance({
+    address: address,
+  })
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [isLoadingInvoices, setIsLoadingInvoices] = useState(true)
+  const [copied, setCopied] = useState(false)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const loadInvoices = async () => {
+      if (!isConnected || !address) {
+        setIsLoadingInvoices(false)
+        return
+      }
+
+      try {
+        setIsLoadingInvoices(true)
+        const msmeInvoices = await fetchInvoicesByMSME(address, publicClient || undefined)
+        setInvoices(msmeInvoices)
+        setIsLoadingInvoices(false)
+      } catch (error) {
+        console.error("Error loading invoices:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load invoices",
+          variant: "destructive",
+        })
+        setIsLoadingInvoices(false)
+      }
+    }
+
+    loadInvoices()
+  }, [address, isConnected, publicClient, toast])
+
+  const copyAddress = async () => {
+    if (address) {
+      await navigator.clipboard.writeText(address)
+      setCopied(true)
+      toast({
+        title: "Copied",
+        description: "Wallet address copied to clipboard",
+      })
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  // Calculate stats from blockchain data
+  const totalLiquidityReceived = invoices.reduce(
+    (sum, inv) => sum + parseFloat(inv.fundedAmount),
+    0
+  )
+  const activeInvoices = invoices.filter(
+    (inv) => inv.status === 1 || inv.status === 2
+  )
+  const pendingSettlements = activeInvoices.reduce(
+    (sum, inv) => sum + parseFloat(inv.fundedAmount),
+    0
+  )
+
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <Wallet className="h-12 w-12 text-muted-foreground" />
+        <h3 className="text-lg font-medium">Connect your wallet</h3>
+        <p className="text-sm text-muted-foreground text-center max-w-md">
+          Connect your wallet to view your wallet balance and transaction history.
+        </p>
+        <Button asChild>
+          <Link href="/connect">Connect Wallet</Link>
+        </Button>
+      </div>
+    )
+  }
+
+  const polygonScanUrl = `https://amoy.polygonscan.com/address/${address}`
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Wallet</h2>
-        <p className="text-muted-foreground">Manage your liquidity and transaction history</p>
+        <p className="text-muted-foreground">
+          View your wallet balance and blockchain data
+        </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -30,21 +114,27 @@ export default function MSMEWalletPage() {
               <Wallet className="size-5 text-primary" />
               Wallet Balance
             </CardTitle>
-            <CardDescription>Available funds for withdrawal</CardDescription>
+            <CardDescription>Your native MATIC balance</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground mb-1">USDC Balance</p>
-              <p className="text-4xl font-bold">$22,450</p>
+              <p className="text-sm text-muted-foreground mb-1">MATIC Balance</p>
+              {isLoadingBalance ? (
+                <Skeleton className="h-12 w-48" />
+              ) : (
+                <p className="text-4xl font-bold">
+                  {balanceData ? parseFloat(formatEther(balanceData.value)).toFixed(4) : "0.0000"} MATIC
+                </p>
+              )}
             </div>
             <div className="flex gap-3">
-              <Button className="flex-1">
-                <Download className="size-4 mr-2" />
-                Withdraw
-              </Button>
-              <Button variant="outline" className="flex-1 bg-transparent">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => window.open(polygonScanUrl, "_blank")}
+              >
                 <ExternalLink className="size-4 mr-2" />
-                View Wallet
+                View on Explorer
               </Button>
             </div>
           </CardContent>
@@ -52,42 +142,62 @@ export default function MSMEWalletPage() {
 
         <Card className="border-border/50">
           <CardHeader>
-            <CardTitle>Connected Account</CardTitle>
-            <CardDescription>Linked bank account for settlements</CardDescription>
+            <CardTitle>Connected Wallet</CardTitle>
+            <CardDescription>Your blockchain wallet address</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground mb-2">Bank Account</p>
+              <p className="text-sm text-muted-foreground mb-2">Wallet Address</p>
               <div className="flex items-center gap-2">
-                <code className="text-sm bg-muted px-3 py-2 rounded border border-border/50 flex-1">
-                  HDFC Bank ****4521
+                <code className="text-xs bg-muted px-3 py-2 rounded border border-border/50 flex-1 font-mono">
+                  {address ? formatFullAddress(address) : "Not connected"}
                 </code>
-                <Button size="sm" variant="outline">
-                  <ExternalLink className="size-4" />
-                </Button>
+                {address && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={copyAddress}
+                    title="Copy address"
+                  >
+                    {copied ? (
+                      <Check className="size-4 text-green-500" />
+                    ) : (
+                      <Copy className="size-4" />
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground mb-2">Wallet Address</p>
-              <code className="text-xs bg-muted px-3 py-2 rounded border border-border/50 block">
-                0x742d35Cc6634C0532925a3b844Bc9e7595f3f8a
-              </code>
-            </div>
-            <Button variant="outline" className="w-full bg-transparent">
-              Update Account
-            </Button>
+            {address && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => window.open(polygonScanUrl, "_blank")}
+              >
+                <ExternalLink className="size-4 mr-2" />
+                View on PolygonScan
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-border/50">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Total Liquidity Received</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$1.2M</div>
-            <p className="text-xs text-muted-foreground mt-1">Lifetime funding</p>
+            {isLoadingInvoices ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  {totalLiquidityReceived.toFixed(2)} MATIC
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Lifetime funding</p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -96,68 +206,64 @@ export default function MSMEWalletPage() {
             <CardTitle className="text-sm font-medium">Pending Settlements</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$46,085</div>
-            <p className="text-xs text-muted-foreground mt-1">From active invoices</p>
+            {isLoadingInvoices ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  {pendingSettlements.toFixed(2)} MATIC
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  From active invoices
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Withdrawals</CardTitle>
+            <CardTitle className="text-sm font-medium">Network</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$1.15M</div>
-            <p className="text-xs text-muted-foreground mt-1">To bank account</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Avg Funding Time</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">2.4 hrs</div>
-            <p className="text-xs text-muted-foreground mt-1">From verification</p>
+            <div className="text-2xl font-bold">Polygon Amoy</div>
+            <p className="text-xs text-muted-foreground mt-1">Testnet</p>
           </CardContent>
         </Card>
       </div>
 
       <Card className="border-border/50">
         <CardHeader>
-          <CardTitle>Transaction History</CardTitle>
-          <CardDescription>Recent wallet activity and funding records</CardDescription>
+          <CardTitle>Wallet Information</CardTitle>
+          <CardDescription>
+            Your wallet data is read directly from the blockchain
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Transaction Hash</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Date & Time</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.map((tx) => (
-                <TableRow key={tx.id}>
-                  <TableCell className="font-mono text-sm">{tx.id}</TableCell>
-                  <TableCell>
-                    <Badge variant={tx.type.includes("Funded") ? "default" : "secondary"}>{tx.type}</Badge>
-                  </TableCell>
-                  <TableCell className={`text-right font-semibold ${tx.amount > 0 ? "text-green-500" : ""}`}>
-                    {tx.amount > 0 ? "+" : ""}${Math.abs(tx.amount).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-sm">{tx.date}</TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant="outline">{tx.status}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm font-medium mb-1">Network</p>
+              <p className="text-sm text-muted-foreground">Polygon Amoy Testnet (Chain ID: 80002)</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Currency</p>
+              <p className="text-sm text-muted-foreground">MATIC (Polygon native token)</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Block Explorer</p>
+              <Button
+                variant="link"
+                className="p-0 h-auto text-sm"
+                onClick={() => window.open(polygonScanUrl, "_blank")}
+              >
+                View on PolygonScan
+                <ExternalLink className="size-3 ml-1" />
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
   )
 }
+

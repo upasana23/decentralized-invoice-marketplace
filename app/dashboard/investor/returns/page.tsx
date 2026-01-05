@@ -1,20 +1,104 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useAccount } from "wagmi"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { TrendingUp, DollarSign, AlertCircle, CheckCircle2 } from "lucide-react"
-
-const settledInvestments = [
-  { id: "INV-7815", principal: 4200, returnEarned: 189, settlementDate: "2024-12-22", roi: 4.5 },
-  { id: "INV-7812", principal: 3500, returnEarned: 140, settlementDate: "2024-12-18", roi: 4.0 },
-  { id: "INV-7809", principal: 5800, returnEarned: 319, settlementDate: "2024-12-15", roi: 5.5 },
-  { id: "INV-7805", principal: 2900, returnEarned: 145, settlementDate: "2024-12-10", roi: 5.0 },
-  { id: "INV-7802", principal: 4600, returnEarned: 207, settlementDate: "2024-12-05", roi: 4.5 },
-  { id: "INV-7798", principal: 3100, returnEarned: 124, settlementDate: "2024-12-01", roi: 4.0 },
-]
+import { Skeleton } from "@/components/ui/skeleton"
+import { TrendingUp, DollarSign, AlertCircle, CheckCircle2, Wallet, FileText } from "lucide-react"
+import { fetchAllInvoices, fetchInvestmentAmount, Invoice, getStatusLabel } from "@/lib/invoice"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function InvestorReturnsPage() {
+  const { address, isConnected } = useAccount()
+  const [allInvoices, setAllInvoices] = useState<Invoice[]>([])
+  const [investments, setInvestments] = useState<Record<number, string>>({})
+  const [isLoading, setIsLoading] = useState(true)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const loadData = async () => {
+      if (!isConnected || !address) {
+        setIsLoading(false)
+        return
+      }
+
+      try {
+        setIsLoading(true)
+        const invoices = await fetchAllInvoices()
+        setAllInvoices(invoices)
+
+        // Fetch investment amounts for each invoice
+        const investmentMap: Record<number, string> = {}
+        for (const inv of invoices) {
+          const amount = await fetchInvestmentAmount(inv.id, address)
+          if (parseFloat(amount) > 0) {
+            investmentMap[inv.id] = amount
+          }
+        }
+        setInvestments(investmentMap)
+      } catch (error) {
+        console.error(error)
+        toast({
+          title: "Error",
+          description: "Failed to load returns data",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [address, isConnected, toast])
+
+  // Filter invoices where user has investments and are settled (Repaid or Defaulted)
+  const portfolioInvoices = allInvoices.filter((inv) => investments[inv.id])
+  const settledInvestments = portfolioInvoices.filter((inv) => inv.status === 3 || inv.status === 4)
+  const repaidInvestments = settledInvestments.filter((inv) => inv.status === 3)
+  const defaultedInvestments = settledInvestments.filter((inv) => inv.status === 4)
+
+  // Calculate stats from blockchain data
+  const totalPrincipalDeployed = settledInvestments.reduce(
+    (sum, inv) => sum + parseFloat(investments[inv.id]),
+    0
+  )
+
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <Wallet className="h-12 w-12 text-muted-foreground" />
+        <h3 className="text-lg font-medium">Connect your wallet</h3>
+        <p className="text-sm text-muted-foreground text-center max-w-md">
+          Connect your wallet to view your investment returns.
+        </p>
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-9 w-64 mb-2" />
+          <Skeleton className="h-5 w-96" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="border-border/50">
+              <CardHeader>
+                <Skeleton className="h-4 w-32 mb-2" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-24" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="space-y-6">
       <div>
@@ -25,116 +109,45 @@ export default function InvestorReturnsPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Returns Earned</CardTitle>
+            <CardTitle className="text-sm font-medium">Settled Investments</CardTitle>
             <DollarSign className="size-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">$8,450</div>
-            <p className="text-xs text-muted-foreground">All-time earnings</p>
+            <div className="text-2xl font-bold">{settledInvestments.length}</div>
+            <p className="text-xs text-muted-foreground">Completed investments</p>
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average ROI</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Principal</CardTitle>
             <TrendingUp className="size-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">4.6%</div>
-            <p className="text-xs text-muted-foreground">Per invoice cycle</p>
+            <div className="text-2xl font-bold">{totalPrincipalDeployed.toFixed(2)} MATIC</div>
+            <p className="text-xs text-muted-foreground">In settled investments</p>
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Late Payment Penalties</CardTitle>
-            <AlertCircle className="size-4 text-amber-500" />
+            <CardTitle className="text-sm font-medium">Repaid</CardTitle>
+            <CheckCircle2 className="size-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$320</div>
-            <p className="text-xs text-muted-foreground">Earned from delays</p>
+            <div className="text-2xl font-bold">{repaidInvestments.length}</div>
+            <p className="text-xs text-muted-foreground">Successfully repaid</p>
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Default Losses</CardTitle>
-            <CheckCircle2 className="size-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Defaulted</CardTitle>
+            <AlertCircle className="size-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$0</div>
-            <p className="text-xs text-muted-foreground">No defaults recorded</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle>Returns Summary</CardTitle>
-            <CardDescription>Lifetime financial performance metrics</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-accent/5">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Principal Deployed</p>
-                <p className="text-2xl font-bold">$184,200</p>
-              </div>
-              <TrendingUp className="size-8 text-muted-foreground" />
-            </div>
-            <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-accent/5">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Returns + Principal</p>
-                <p className="text-2xl font-bold text-green-500">$192,650</p>
-              </div>
-              <DollarSign className="size-8 text-green-500" />
-            </div>
-            <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-primary/5">
-              <div>
-                <p className="text-sm text-muted-foreground">Net Profit</p>
-                <p className="text-2xl font-bold text-primary">$8,450</p>
-              </div>
-              <CheckCircle2 className="size-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle>Performance Breakdown</CardTitle>
-            <CardDescription>Returns by risk tier</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="size-3 rounded-full bg-green-500" />
-                  <span className="text-sm font-medium">Low Risk (Tier A)</span>
-                </div>
-                <span className="text-sm font-semibold">$3,200 (38%)</span>
-              </div>
-              <p className="text-xs text-muted-foreground ml-5">Avg ROI: 3.8%</p>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="size-3 rounded-full bg-amber-500" />
-                  <span className="text-sm font-medium">Medium Risk (Tier B)</span>
-                </div>
-                <span className="text-sm font-semibold">$3,850 (46%)</span>
-              </div>
-              <p className="text-xs text-muted-foreground ml-5">Avg ROI: 5.2%</p>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="size-3 rounded-full bg-red-500" />
-                  <span className="text-sm font-medium">High Risk (Tier C)</span>
-                </div>
-                <span className="text-sm font-semibold">$1,400 (16%)</span>
-              </div>
-              <p className="text-xs text-muted-foreground ml-5">Avg ROI: 7.8%</p>
-            </div>
+            <div className="text-2xl font-bold">{defaultedInvestments.length}</div>
+            <p className="text-xs text-muted-foreground">Defaulted investments</p>
           </CardContent>
         </Card>
       </div>
@@ -142,35 +155,47 @@ export default function InvestorReturnsPage() {
       <Card className="border-border/50">
         <CardHeader>
           <CardTitle>Settlement History</CardTitle>
-          <CardDescription>Completed investments and returns earned</CardDescription>
+          <CardDescription>Completed investments and their outcomes</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Invoice ID</TableHead>
-                <TableHead className="text-right">Principal</TableHead>
-                <TableHead className="text-right">Return Earned</TableHead>
-                <TableHead>Settlement Date</TableHead>
-                <TableHead className="text-right">ROI %</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {settledInvestments.map((investment) => (
-                <TableRow key={investment.id}>
-                  <TableCell className="font-medium">{investment.id}</TableCell>
-                  <TableCell className="text-right">${investment.principal.toLocaleString()}</TableCell>
-                  <TableCell className="text-right font-semibold text-green-500">
-                    +${investment.returnEarned.toLocaleString()}
-                  </TableCell>
-                  <TableCell>{investment.settlementDate}</TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant="secondary">{investment.roi}%</Badge>
-                  </TableCell>
+          {settledInvestments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 space-y-4">
+              <FileText className="h-12 w-12 text-muted-foreground" />
+              <h3 className="text-lg font-medium">No settled investments</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                You don't have any investments that have been repaid or defaulted yet.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice ID</TableHead>
+                  <TableHead className="text-right">Principal Invested</TableHead>
+                  <TableHead className="text-right">Invoice Amount</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {settledInvestments.map((inv) => (
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-medium font-mono text-xs">#{inv.id}</TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {parseFloat(investments[inv.id]).toFixed(4)} MATIC
+                    </TableCell>
+                    <TableCell className="text-right">{parseFloat(inv.amount).toFixed(2)} MATIC</TableCell>
+                    <TableCell>{inv.dueDate.toLocaleDateString()}</TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant={inv.status === 3 ? "secondary" : "destructive"}>
+                        {getStatusLabel(inv.status)}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,21 +1,103 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useAccount, useBalance } from "wagmi"
+import { formatEther } from "viem"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Wallet, Download, Upload, ExternalLink } from "lucide-react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Wallet, ExternalLink, Copy, Check } from "lucide-react"
+import { fetchAllInvoices, fetchInvestmentAmount, Invoice } from "@/lib/invoice"
+import { useToast } from "@/components/ui/use-toast"
+import Link from "next/link"
 
-const transactions = [
-  { id: "0x9a4f...2e1c", type: "Return", amount: 4389, date: "2024-12-22 15:42", status: "Completed" },
-  { id: "0x3b7d...8c2a", type: "Investment", amount: -3500, date: "2024-12-20 10:15", status: "Completed" },
-  { id: "0x7e2c...5f9b", type: "Deposit", amount: 50000, date: "2024-12-18 09:30", status: "Completed" },
-  { id: "0x1d8a...4b3e", type: "Return", amount: 3640, date: "2024-12-15 14:20", status: "Completed" },
-  { id: "0x6c9f...7a2d", type: "Investment", amount: -5800, date: "2024-12-12 11:45", status: "Completed" },
-  { id: "0x2a5e...9d1f", type: "Withdrawal", amount: -20000, date: "2024-12-10 16:30", status: "Completed" },
-]
+function formatAddress(addr: string) {
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+}
+
+function formatFullAddress(addr: string) {
+  return `${addr.slice(0, 10)}...${addr.slice(-8)}`
+}
 
 export default function InvestorWalletPage() {
+  const { address, isConnected } = useAccount()
+  const { data: balanceData, isLoading: isLoadingBalance } = useBalance({
+    address: address,
+  })
+  const [allInvoices, setAllInvoices] = useState<Invoice[]>([])
+  const [investments, setInvestments] = useState<Record<number, string>>({})
+  const [isLoadingInvoices, setIsLoadingInvoices] = useState(true)
+  const [copied, setCopied] = useState(false)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const loadData = async () => {
+      if (!isConnected || !address) {
+        setIsLoadingInvoices(false)
+        return
+      }
+
+      try {
+        setIsLoadingInvoices(true)
+        const invoices = await fetchAllInvoices()
+        setAllInvoices(invoices)
+
+        // Fetch investment amounts for each invoice
+        const investmentMap: Record<number, string> = {}
+        for (const inv of invoices) {
+          const amount = await fetchInvestmentAmount(inv.id, address)
+          if (parseFloat(amount) > 0) {
+            investmentMap[inv.id] = amount
+          }
+        }
+        setInvestments(investmentMap)
+      } catch (error) {
+        console.error("Error loading data:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load wallet data",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoadingInvoices(false)
+      }
+    }
+
+    loadData()
+  }, [address, isConnected, toast])
+
+  const copyAddress = async () => {
+    if (address) {
+      await navigator.clipboard.writeText(address)
+      setCopied(true)
+      toast({
+        title: "Copied",
+        description: "Wallet address copied to clipboard",
+      })
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  // Calculate stats from blockchain data
+  const portfolioInvoices = allInvoices.filter((inv) => investments[inv.id])
+  const totalDeployed = Object.values(investments).reduce(
+    (sum, amount) => sum + parseFloat(amount),
+    0
+  )
+
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <Wallet className="h-12 w-12 text-muted-foreground" />
+        <h3 className="text-lg font-medium">Connect your wallet</h3>
+        <p className="text-sm text-muted-foreground text-center max-w-md">
+          Connect your wallet to view your wallet balance and investment data.
+        </p>
+      </div>
+    )
+  }
+
+  const polygonScanUrl = `https://amoy.polygonscan.com/address/${address}`
   return (
     <div className="space-y-6">
       <div>
@@ -28,23 +110,29 @@ export default function InvestorWalletPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Wallet className="size-5 text-primary" />
-              Stablecoin Balance
+              Wallet Balance
             </CardTitle>
-            <CardDescription>Available funds for investment</CardDescription>
+            <CardDescription>Your native MATIC balance</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground mb-1">USDC Balance</p>
-              <p className="text-4xl font-bold">$125,000</p>
+              <p className="text-sm text-muted-foreground mb-1">MATIC Balance</p>
+              {isLoadingBalance ? (
+                <Skeleton className="h-12 w-48" />
+              ) : (
+                <p className="text-4xl font-bold">
+                  {balanceData ? parseFloat(formatEther(balanceData.value)).toFixed(4) : "0.0000"} MATIC
+                </p>
+              )}
             </div>
             <div className="flex gap-3">
-              <Button className="flex-1">
-                <Upload className="size-4 mr-2" />
-                Deposit
-              </Button>
-              <Button variant="outline" className="flex-1 bg-transparent">
-                <Download className="size-4 mr-2" />
-                Withdraw
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => window.open(polygonScanUrl, "_blank")}
+              >
+                <ExternalLink className="size-4 mr-2" />
+                View on Explorer
               </Button>
             </div>
           </CardContent>
@@ -53,119 +141,125 @@ export default function InvestorWalletPage() {
         <Card className="border-border/50">
           <CardHeader>
             <CardTitle>Connected Wallet</CardTitle>
-            <CardDescription>Blockchain wallet for transactions</CardDescription>
+            <CardDescription>Your blockchain wallet address</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
               <p className="text-sm text-muted-foreground mb-2">Wallet Address</p>
               <div className="flex items-center gap-2">
-                <code className="text-sm bg-muted px-3 py-2 rounded border border-border/50 flex-1">0x9a4f...2e1c</code>
-                <Button size="sm" variant="outline">
-                  <ExternalLink className="size-4" />
-                </Button>
+                <code className="text-xs bg-muted px-3 py-2 rounded border border-border/50 flex-1 font-mono">
+                  {address ? formatFullAddress(address) : "Not connected"}
+                </code>
+                {address && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={copyAddress}
+                    title="Copy address"
+                  >
+                    {copied ? (
+                      <Check className="size-4 text-green-500" />
+                    ) : (
+                      <Copy className="size-4" />
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground mb-2">Network</p>
-              <Badge variant="secondary">Ethereum Mainnet</Badge>
-            </div>
-            <Button variant="outline" className="w-full bg-transparent">
-              Disconnect Wallet
-            </Button>
+            {address && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => window.open(polygonScanUrl, "_blank")}
+              >
+                <ExternalLink className="size-4 mr-2" />
+                View on PolygonScan
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-border/50">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Total Capital Deployed</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$184,200</div>
-            <p className="text-xs text-muted-foreground mt-1">Lifetime investments</p>
+            {isLoadingInvoices ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{totalDeployed.toFixed(2)} MATIC</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {portfolioInvoices.length} {portfolioInvoices.length === 1 ? "investment" : "investments"}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Withdrawable Amount</CardTitle>
+            <CardTitle className="text-sm font-medium">Active Investments</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$125,000</div>
-            <p className="text-xs text-muted-foreground mt-1">Available to withdraw</p>
+            {isLoadingInvoices ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  {portfolioInvoices.filter((inv) => inv.status === 1 || inv.status === 2).length}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Currently funded</p>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Returns Earned</CardTitle>
+            <CardTitle className="text-sm font-medium">Network</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">$8,450</div>
-            <p className="text-xs text-muted-foreground mt-1">All-time profit</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Withdrawals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">$85,000</div>
-            <p className="text-xs text-muted-foreground mt-1">To external wallet</p>
+            <div className="text-2xl font-bold">Polygon Amoy</div>
+            <p className="text-xs text-muted-foreground mt-1">Testnet</p>
           </CardContent>
         </Card>
       </div>
 
       <Card className="border-border/50">
         <CardHeader>
-          <CardTitle>Transaction History</CardTitle>
-          <CardDescription>Recent wallet activity and investment records</CardDescription>
+          <CardTitle>Wallet Information</CardTitle>
+          <CardDescription>
+            Your wallet data is read directly from the blockchain
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Transaction Hash</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Date & Time</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.map((tx) => (
-                <TableRow key={tx.id}>
-                  <TableCell className="font-mono text-sm">{tx.id}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        tx.type === "Return"
-                          ? "default"
-                          : tx.type === "Investment"
-                            ? "secondary"
-                            : tx.type === "Deposit"
-                              ? "outline"
-                              : "outline"
-                      }
-                    >
-                      {tx.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className={`text-right font-semibold ${tx.amount > 0 ? "text-green-500" : ""}`}>
-                    {tx.amount > 0 ? "+" : ""}${Math.abs(tx.amount).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-sm">{tx.date}</TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant="outline">{tx.status}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm font-medium mb-1">Network</p>
+              <p className="text-sm text-muted-foreground">Polygon Amoy Testnet (Chain ID: 80002)</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Currency</p>
+              <p className="text-sm text-muted-foreground">MATIC (Polygon native token)</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Block Explorer</p>
+              <Button
+                variant="link"
+                className="p-0 h-auto text-sm"
+                onClick={() => window.open(polygonScanUrl, "_blank")}
+              >
+                View on PolygonScan
+                <ExternalLink className="size-3 ml-1" />
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
   )
 }
+

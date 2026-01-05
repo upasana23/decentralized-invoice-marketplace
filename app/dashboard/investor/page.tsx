@@ -1,15 +1,108 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useAccount } from "wagmi"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { TrendingUp, PieChart, ShieldCheck, ArrowUpRight, DollarSign } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
+import { TrendingUp, PieChart, ShieldCheck, DollarSign, Wallet, FileText } from "lucide-react"
+import { fetchAllInvoices, fetchInvestmentAmount, Invoice } from "@/lib/invoice"
+import { useToast } from "@/components/ui/use-toast"
+import Link from "next/link"
 
 export default function InvestorDashboard() {
+  const { address, isConnected } = useAccount()
+  const [allInvoices, setAllInvoices] = useState<Invoice[]>([])
+  const [investments, setInvestments] = useState<Record<number, string>>({})
+  const [isLoading, setIsLoading] = useState(true)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const loadData = async () => {
+      if (!isConnected || !address) {
+        setIsLoading(false)
+        return
+      }
+
+      try {
+        setIsLoading(true)
+        const invoices = await fetchAllInvoices()
+        setAllInvoices(invoices)
+
+        // Fetch investment amounts for each invoice
+        const investmentMap: Record<number, string> = {}
+        for (const inv of invoices) {
+          const amount = await fetchInvestmentAmount(inv.id, address)
+          if (parseFloat(amount) > 0) {
+            investmentMap[inv.id] = amount
+          }
+        }
+        setInvestments(investmentMap)
+      } catch (error) {
+        console.error(error)
+        toast({
+          title: "Error",
+          description: "Failed to load investment data",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [address, isConnected, toast])
+
+  // Calculate portfolio stats from blockchain data
+  const portfolioInvoices = allInvoices.filter((inv) => investments[inv.id])
+  const totalDeployed = Object.values(investments).reduce(
+    (sum, amount) => sum + parseFloat(amount),
+    0
+  )
+  const activeInvestments = portfolioInvoices.filter((inv) => inv.status === 1 || inv.status === 2)
+
   const portfolioStats = [
-    { label: "Total Deployed", value: "$124,500", icon: DollarSign, color: "text-primary" },
-    { label: "Active Investments", value: "24", icon: ShieldCheck, color: "text-emerald-500" },
-    { label: "Weighted APY", value: "14.2%", icon: TrendingUp, color: "text-blue-500" },
-    { label: "Expected Returns", value: "$8,420", icon: PieChart, color: "text-amber-500" },
+    { label: "Total Deployed", value: `${totalDeployed.toFixed(2)} MATIC`, icon: DollarSign, color: "text-primary" },
+    { label: "Active Investments", value: activeInvestments.length.toString(), icon: ShieldCheck, color: "text-emerald-500" },
+    { label: "Portfolio Size", value: portfolioInvoices.length.toString(), icon: PieChart, color: "text-amber-500" },
+    { label: "Funded Amount", value: `${portfolioInvoices.reduce((sum, inv) => sum + parseFloat(inv.fundedAmount), 0).toFixed(2)} MATIC`, icon: TrendingUp, color: "text-blue-500" },
   ]
+
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <Wallet className="h-12 w-12 text-muted-foreground" />
+        <h3 className="text-lg font-medium">Connect your wallet</h3>
+        <p className="text-sm text-muted-foreground text-center max-w-md">
+          Connect your wallet to view your investment portfolio.
+        </p>
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <Skeleton className="h-9 w-64 mb-2" />
+          <Skeleton className="h-5 w-96" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="border-border/50">
+              <CardHeader>
+                <Skeleton className="h-4 w-32 mb-2" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-24" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8">
@@ -32,123 +125,58 @@ export default function InvestorDashboard() {
         ))}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="lg:col-span-2 border-border/50 bg-card/50">
-          <CardHeader>
-            <CardTitle>Recent Performance</CardTitle>
-            <CardDescription>Yield realized over the last 30 days.</CardDescription>
-          </CardHeader>
-          <CardContent className="h-[300px] flex items-end justify-between gap-2 pt-4">
-            {/* Mock chart visualization using Tailwind */}
-            {[45, 62, 58, 75, 90, 82, 95, 110, 105, 120, 135, 150].map((h, i) => (
-              <div key={i} className="group relative flex-1">
-                <div
-                  className="bg-primary/20 hover:bg-primary/40 transition-colors rounded-t-sm"
-                  style={{ height: `${h}px` }}
-                />
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-popover border p-1 rounded text-[10px] hidden group-hover:block whitespace-nowrap">
-                  Day {i + 1}: ${h * 10}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 bg-card/50">
-          <CardHeader>
-            <CardTitle>Portfolio Risk Profile</CardTitle>
-            <CardDescription>Allocation across risk tiers.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Tier A (Low Risk)</span>
-                <span className="font-medium text-emerald-500">65%</span>
-              </div>
-              <Progress value={65} className="bg-emerald-500/10" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Tier B (Medium Risk)</span>
-                <span className="font-medium text-amber-500">25%</span>
-              </div>
-              <Progress value={25} className="bg-amber-500/10" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Tier C (High Risk)</span>
-                <span className="font-medium text-primary">10%</span>
-              </div>
-              <Progress value={10} className="bg-primary/10" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       <Card className="border-border/50 bg-card/50">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Active Investments</CardTitle>
-            <CardDescription>Performance of your current RWA deployments.</CardDescription>
+            <CardDescription>Your current portfolio investments.</CardDescription>
           </div>
-          <Badge variant="outline" className="gap-1">
-            View All <ArrowUpRight className="size-3" />
-          </Badge>
+          <Button variant="outline" asChild>
+            <Link href="/dashboard/investor/portfolio">View Portfolio</Link>
+          </Button>
         </CardHeader>
         <CardContent>
-          <div className="relative w-full overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/50 text-muted-foreground">
-                  <th className="h-10 px-2 text-left font-medium">Invoice ID</th>
-                  <th className="h-10 px-2 text-left font-medium">Entity</th>
-                  <th className="h-10 px-2 text-left font-medium">Invested</th>
-                  <th className="h-10 px-2 text-left font-medium">Est. APY</th>
-                  <th className="h-10 px-2 text-left font-medium">Maturity</th>
-                  <th className="h-10 px-2 text-right font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {[
-                  {
-                    id: "INV-8821",
-                    name: "SolarTech Mfg",
-                    amount: "$5,000",
-                    apy: "12.5%",
-                    days: "14",
-                    status: "Healthy",
-                  },
-                  {
-                    id: "INV-9243",
-                    name: "Global Logistics",
-                    amount: "$12,000",
-                    apy: "14.8%",
-                    days: "22",
-                    status: "Healthy",
-                  },
-                  {
-                    id: "INV-7732",
-                    name: "BioPharma Solutions",
-                    amount: "$2,500",
-                    apy: "18.2%",
-                    days: "4",
-                    status: "Action Required",
-                  },
-                ].map((inv) => (
-                  <tr key={inv.id}>
-                    <td className="p-4 font-mono text-xs">{inv.id}</td>
-                    <td className="p-4">{inv.name}</td>
-                    <td className="p-4 font-medium">{inv.amount}</td>
-                    <td className="p-4 text-primary">{inv.apy}</td>
-                    <td className="p-4 text-muted-foreground">{inv.days} days</td>
-                    <td className="p-4 text-right">
-                      <Badge variant={inv.status === "Healthy" ? "outline" : "destructive"}>{inv.status}</Badge>
-                    </td>
+          {activeInvestments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 space-y-4">
+              <FileText className="h-12 w-12 text-muted-foreground" />
+              <h3 className="text-lg font-medium">No active investments</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                You don't have any active investments yet. Browse the marketplace to start investing.
+              </p>
+              <Button asChild>
+                <Link href="/dashboard/investor/marketplace">Browse Marketplace</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="relative w-full overflow-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/50 text-muted-foreground">
+                    <th className="h-10 px-2 text-left font-medium">Invoice ID</th>
+                    <th className="h-10 px-2 text-left font-medium">MSME</th>
+                    <th className="h-10 px-2 text-left font-medium">Invested</th>
+                    <th className="h-10 px-2 text-left font-medium">Total Amount</th>
+                    <th className="h-10 px-2 text-left font-medium">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {activeInvestments.map((inv) => (
+                    <tr key={inv.id}>
+                      <td className="p-4 font-mono text-xs">#{inv.id}</td>
+                      <td className="p-4 font-mono text-xs">{inv.msme.slice(0, 6)}...{inv.msme.slice(-4)}</td>
+                      <td className="p-4 font-medium">{parseFloat(investments[inv.id]).toFixed(4)} MATIC</td>
+                      <td className="p-4">{parseFloat(inv.amount).toFixed(2)} MATIC</td>
+                      <td className="p-4">
+                        <Badge variant={inv.status === 1 ? "outline" : "default"}>
+                          {inv.status === 1 ? "Fundraising" : "Funded"}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

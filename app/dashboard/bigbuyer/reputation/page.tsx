@@ -1,10 +1,109 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useAccount } from "wagmi"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { Award, TrendingUp, Clock, CheckCircle2 } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Award, TrendingUp, Clock, CheckCircle2, Wallet, FileText } from "lucide-react"
+import { fetchInvoicesByBuyer, Invoice, getStatusLabel, calculateDaysRemaining } from "@/lib/invoice"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function BigBuyerReputationPage() {
+  const { address, isConnected } = useAccount()
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const loadInvoices = async () => {
+      if (!isConnected || !address) {
+        setIsLoading(false)
+        return
+      }
+
+      try {
+        setIsLoading(true)
+        const buyerInvoices = await fetchInvoicesByBuyer(address)
+        setInvoices(buyerInvoices)
+      } catch (error) {
+        console.error(error)
+        toast({
+          title: "Error",
+          description: "Failed to load reputation data",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadInvoices()
+  }, [address, isConnected, toast])
+
+  // Calculate reputation metrics from blockchain data
+  const totalInvoices = invoices.length
+  const repaidInvoices = invoices.filter((inv) => inv.status === 3)
+  const defaultedInvoices = invoices.filter((inv) => inv.status === 4)
+  const onTimeRate = totalInvoices > 0 ? Math.round((repaidInvoices.length / totalInvoices) * 100) : 0
+  
+  // Calculate unique MSMEs
+  const uniqueMSMEs = new Set(invoices.map((inv) => inv.msme.toLowerCase())).size
+
+  // Calculate reputation score (0-1000, simple formula)
+  const reputationScore = totalInvoices > 0
+    ? Math.round((repaidInvoices.length / totalInvoices) * 1000)
+    : 0
+
+  // Grade mapping
+  const getGrade = (score: number) => {
+    if (score >= 950) return "A+"
+    if (score >= 900) return "A"
+    if (score >= 850) return "B+"
+    if (score >= 800) return "B"
+    if (score >= 750) return "C+"
+    if (score >= 700) return "C"
+    return "D"
+  }
+
+  const grade = getGrade(reputationScore)
+
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <Wallet className="h-12 w-12 text-muted-foreground" />
+        <h3 className="text-lg font-medium">Connect your wallet</h3>
+        <p className="text-sm text-muted-foreground text-center max-w-md">
+          Connect your wallet to view your reputation metrics.
+        </p>
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-9 w-64 mb-2" />
+          <Skeleton className="h-5 w-96" />
+        </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          {[...Array(2)].map((_, i) => (
+            <Card key={i} className="border-border/50">
+              <CardHeader>
+                <Skeleton className="h-6 w-48 mb-2" />
+                <Skeleton className="h-4 w-64" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-24 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -23,15 +122,19 @@ export default function BigBuyerReputationPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-6xl font-bold text-primary">A+</span>
+              <span className="text-6xl font-bold text-primary">{grade}</span>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Numeric Score</p>
-                <p className="text-3xl font-bold">965</p>
+                <p className="text-3xl font-bold">{reputationScore}</p>
                 <p className="text-xs text-muted-foreground">out of 1000</p>
               </div>
             </div>
-            <Progress value={96.5} className="h-3" />
-            <p className="text-sm text-muted-foreground">You are in the top 5% of all buyers on the platform</p>
+            <Progress value={(reputationScore / 1000) * 100} className="h-3" />
+            <p className="text-sm text-muted-foreground">
+              {totalInvoices === 0
+                ? "No invoices yet"
+                : `Based on ${totalInvoices} ${totalInvoices === 1 ? "invoice" : "invoices"}`}
+            </p>
           </CardContent>
         </Card>
 
@@ -39,28 +142,28 @@ export default function BigBuyerReputationPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="size-5 text-green-500" />
-              Reputation Trend
+              Payment Summary
             </CardTitle>
-            <CardDescription>Score progression over last 6 months</CardDescription>
+            <CardDescription>Overview of your payment activity</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {[
-                { month: "Dec 2024", score: 965 },
-                { month: "Nov 2024", score: 958 },
-                { month: "Oct 2024", score: 951 },
-                { month: "Sep 2024", score: 945 },
-                { month: "Aug 2024", score: 940 },
-                { month: "Jul 2024", score: 935 },
-              ].map((item) => (
-                <div key={item.month} className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{item.month}</span>
-                  <div className="flex items-center gap-3">
-                    <Progress value={(item.score / 1000) * 100} className="w-32 h-2" />
-                    <span className="text-sm font-semibold w-10">{item.score}</span>
-                  </div>
-                </div>
-              ))}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total Invoices</span>
+                <span className="text-sm font-semibold">{totalInvoices}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Repaid</span>
+                <span className="text-sm font-semibold text-green-500">{repaidInvoices.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Defaulted</span>
+                <span className="text-sm font-semibold text-red-500">{defaultedInvoices.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Success Rate</span>
+                <span className="text-sm font-semibold">{onTimeRate}%</span>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -69,34 +172,36 @@ export default function BigBuyerReputationPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">On-Time Payment %</CardTitle>
+            <CardTitle className="text-sm font-medium">Payment Success Rate</CardTitle>
             <CheckCircle2 className="size-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">96.5%</div>
-            <p className="text-xs text-muted-foreground">211 of 219 on time</p>
+            <div className="text-2xl font-bold">{onTimeRate}%</div>
+            <p className="text-xs text-muted-foreground">
+              {repaidInvoices.length} of {totalInvoices} {totalInvoices === 1 ? "invoice" : "invoices"}
+            </p>
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average Delay</CardTitle>
-            <Clock className="size-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Total Invoices</CardTitle>
+            <FileText className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0.8 days</div>
-            <p className="text-xs text-muted-foreground">Across late payments</p>
+            <div className="text-2xl font-bold">{totalInvoices}</div>
+            <p className="text-xs text-muted-foreground">All-time received</p>
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Invoices Supported</CardTitle>
-            <TrendingUp className="size-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Repaid</CardTitle>
+            <TrendingUp className="size-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">234</div>
-            <p className="text-xs text-muted-foreground">Total funded invoices</p>
+            <div className="text-2xl font-bold text-green-500">{repaidInvoices.length}</div>
+            <p className="text-xs text-muted-foreground">Successfully paid</p>
           </CardContent>
         </Card>
 
@@ -106,7 +211,7 @@ export default function BigBuyerReputationPage() {
             <Award className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">45</div>
+            <div className="text-2xl font-bold">{uniqueMSMEs}</div>
             <p className="text-xs text-muted-foreground">Unique businesses</p>
           </CardContent>
         </Card>
@@ -114,38 +219,42 @@ export default function BigBuyerReputationPage() {
 
       <Card className="border-border/50">
         <CardHeader>
-          <CardTitle>Reputation Breakdown</CardTitle>
+          <CardTitle>Reputation Metrics</CardTitle>
           <CardDescription>Factors contributing to your buyer score</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Payment Punctuality</span>
-              <span className="text-sm font-semibold">98/100</span>
+          {totalInvoices === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 space-y-2">
+              <FileText className="h-10 w-10 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground text-center">
+                No invoices yet. Your reputation will be calculated once you receive invoices.
+              </p>
             </div>
-            <Progress value={98} className="h-2" />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Payment Consistency</span>
-              <span className="text-sm font-semibold">96/100</span>
-            </div>
-            <Progress value={96} className="h-2" />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Transaction Volume</span>
-              <span className="text-sm font-semibold">95/100</span>
-            </div>
-            <Progress value={95} className="h-2" />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Platform Tenure</span>
-              <span className="text-sm font-semibold">92/100</span>
-            </div>
-            <Progress value={92} className="h-2" />
-          </div>
+          ) : (
+            <>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Payment Success Rate</span>
+                  <span className="text-sm font-semibold">{onTimeRate}%</span>
+                </div>
+                <Progress value={onTimeRate} className="h-2" />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Total Invoices</span>
+                  <span className="text-sm font-semibold">{totalInvoices}</span>
+                </div>
+                <Progress value={Math.min((totalInvoices / 100) * 100, 100)} className="h-2" />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Reputation Score</span>
+                  <span className="text-sm font-semibold">{reputationScore}/1000</span>
+                </div>
+                <Progress value={(reputationScore / 1000) * 100} className="h-2" />
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
