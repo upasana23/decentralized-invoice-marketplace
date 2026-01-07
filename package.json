@@ -53,6 +53,7 @@
     "dotenv": "^16.4.5",
     "embla-carousel-react": "8.5.1",
     "ethers": "^6.16.0",
+    "express": "^5.2.1",
     "framer-motion": "^12.23.26",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
@@ -76,6 +77,7 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@tailwindcss/postcss": "^4.1.9",
+    "@types/express": "^5.0.6",
     "@types/node": "^22",
     "@types/react": "^18",
     "@types/react-dom": "^18",
