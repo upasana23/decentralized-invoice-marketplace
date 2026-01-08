@@ -11,7 +11,7 @@ import { ethers } from "ethers"
 import { useRouter } from "next/navigation"
 import InvoiceMarketplaceABI from "@/lib/contracts/InvoiceMarketplace.json"
 
-type FormData = {
+type InvoiceFormState = {
   buyerAddress: string
   amount: string
   dueDate: string
@@ -30,7 +30,7 @@ export default function TokenizeInvoice() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   // -------------------------------
 
-  const [formData, setFormData] = useState<FormData>({
+  const [formData, setFormData] = useState<InvoiceFormState>({
     buyerAddress: "",
     amount: "",
     dueDate: "",
@@ -127,9 +127,6 @@ export default function TokenizeInvoice() {
     try {
       setIsSubmitting(true)
 
-      // NOTE: IPFS Upload Logic would go here
-      // const ipfsHash = await uploadToIPFS(file);
-      
       // Connect to MetaMask
       const provider = new ethers.BrowserProvider(window.ethereum)
       const signer = await provider.getSigner()
@@ -143,6 +140,38 @@ export default function TokenizeInvoice() {
           variant: "destructive"
         })
         return
+      }
+      
+      const msmeAddress = await signer.getAddress()
+
+      const ipfsFormData = new FormData()
+      ipfsFormData.append("file", file)
+      ipfsFormData.append("buyerAddress", formData.buyerAddress)
+      ipfsFormData.append("msmeAddress", msmeAddress)
+      ipfsFormData.append("amount", formData.amount)
+      ipfsFormData.append("dueDate", formData.dueDate)
+      ipfsFormData.append("currency", "MATIC")
+      ipfsFormData.append("discountRate", formData.discountRate)
+      if (formData.metadataURI) {
+        ipfsFormData.append("description", formData.metadataURI)
+      }
+
+      const ipfsResponse = await fetch("/api/invoices/ipfs", {
+        method: "POST",
+        body: ipfsFormData,
+      })
+
+      const ipfsJson = await ipfsResponse.json().catch(() => null as any)
+
+      if (!ipfsResponse.ok) {
+        const message = (ipfsJson && ipfsJson.error) || "Failed to upload invoice to IPFS"
+        throw new Error(message)
+      }
+
+      const metadataUri: string | undefined = ipfsJson?.metadataUri
+
+      if (!metadataUri) {
+        throw new Error("IPFS upload did not return metadata URI")
       }
       
       // Get contract instance
@@ -168,7 +197,7 @@ export default function TokenizeInvoice() {
         amountInWei,
         dueDateTimestamp,
         discountRateBps,
-        formData.metadataURI || "" 
+        metadataUri 
       )
       
       await tx.wait()
