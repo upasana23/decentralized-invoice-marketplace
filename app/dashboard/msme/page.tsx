@@ -1,5 +1,7 @@
 // app/dashboard/msme/page.tsx
 "use client";
+import ReputationSection from "@/components/msme/ReputationSection";
+
 import { useEffect, useState } from "react";
 import { useAccount, usePublicClient } from "wagmi";
 import { FileText, TrendingUp, Clock, Wallet, PlusCircle } from "lucide-react";
@@ -112,9 +114,12 @@ export default function MSMEDashboard() {
   }
 
   return (
-    <div className="space-y-8">
+    
+   <div className="space-y-8">
+
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+
         {stats.map((stat, i) => (
           <Card key={i}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -189,6 +194,12 @@ export default function MSMEDashboard() {
           )}
         </CardContent>
       </Card>
+      {/* MSME Reputation Section - MUST be at bottom */}
+  {/* Reputation & Investor Trust - Full Width Section */}
+      <div className="pt-10">
+        <ReputationSection />
+      </div>
+
     </div>
   );
 }

@@ -1,11 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Info, Loader2 } from "lucide-react"
+import { Info, Loader2, UploadCloud, FileText, X } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { ethers } from "ethers"
 import { useRouter } from "next/navigation"
@@ -23,6 +23,13 @@ export default function TokenizeInvoice() {
   const { toast } = useToast()
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // --- New State for File Upload ---
+  const [file, setFile] = useState<File | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  // -------------------------------
+
   const [formData, setFormData] = useState<FormData>({
     buyerAddress: "",
     amount: "",
@@ -30,6 +37,63 @@ export default function TokenizeInvoice() {
     discountRate: "",
     metadataURI: ""
   })
+
+  // --- File Upload Handlers ---
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const droppedFile = e.dataTransfer.files[0]
+      if (droppedFile.type === "application/pdf") {
+        setFile(droppedFile)
+        // Auto-fill description with filename if empty
+        setFormData(prev => ({ 
+            ...prev, 
+            metadataURI: prev.metadataURI || `Invoice: ${droppedFile.name}` 
+        }))
+      } else {
+        toast({
+          title: "Invalid File Type",
+          description: "Please upload a PDF file.",
+          variant: "destructive"
+        })
+      }
+    }
+  }
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const files = e.target.files
+  if (!files || !files[0]) {
+    return
+  }
+
+  const selectedFile = files[0]
+  setFile(selectedFile)
+  // Auto-fill description with filename if empty
+  setFormData(prev => ({ 
+    ...prev, 
+    metadataURI: prev.metadataURI || `Invoice: ${selectedFile.name}` 
+  }))
+}
+
+  const removeFile = () => {
+    setFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+  // ---------------------------
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -42,6 +106,15 @@ export default function TokenizeInvoice() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
+    if (!file) {
+      toast({
+        title: "Missing Invoice",
+        description: "Please upload the actual invoice PDF.",
+        variant: "destructive"
+      })
+      return
+    }
+
     if (!window.ethereum) {
       toast({
         title: "Error",
@@ -53,6 +126,9 @@ export default function TokenizeInvoice() {
 
     try {
       setIsSubmitting(true)
+
+      // NOTE: IPFS Upload Logic would go here
+      // const ipfsHash = await uploadToIPFS(file);
       
       // Connect to MetaMask
       const provider = new ethers.BrowserProvider(window.ethereum)
@@ -84,7 +160,7 @@ export default function TokenizeInvoice() {
       // Convert values
       const amountInWei = ethers.parseEther(formData.amount)
       const dueDateTimestamp = Math.floor(new Date(formData.dueDate).getTime() / 1000)
-      const discountRateBps = Math.floor(parseFloat(formData.discountRate) * 100) // Convert percentage to basis points
+      const discountRateBps = Math.floor(parseFloat(formData.discountRate) * 100)
       
       // Call the contract
       const tx = await contract.createInvoice(
@@ -92,19 +168,16 @@ export default function TokenizeInvoice() {
         amountInWei,
         dueDateTimestamp,
         discountRateBps,
-        formData.metadataURI || ""
+        formData.metadataURI || "" 
       )
       
-      // Wait for transaction to be mined
       await tx.wait()
       
-      // Show success message
       toast({
         title: "Success!",
         description: "Invoice created successfully on the blockchain.",
       })
       
-      // Redirect to active invoices list
       router.push("/dashboard/msme/active")
       
     } catch (error: any) {
@@ -113,13 +186,12 @@ export default function TokenizeInvoice() {
       let errorMessage = "Failed to create invoice"
       if (error.code === 4001) {
         errorMessage = "Transaction was rejected"
-      } else if (error.message.includes("insufficient funds")) {
+      } else if (error.message && error.message.includes("insufficient funds")) {
         errorMessage = "Insufficient funds for transaction"
       } else if (error.message) {
-        // Try to extract a meaningful error message
         const match = error.message.match(/reason:"([^"]*)"/) || 
-                     error.message.match(/reverted with reason string '([^']*)'/) ||
-                     []
+                      error.message.match(/reverted with reason string '([^']*)'/) ||
+                      []
         errorMessage = match[1] || error.message
       }
       
@@ -147,7 +219,65 @@ export default function TokenizeInvoice() {
               <CardTitle className="text-lg">Invoice Details</CardTitle>
               <CardDescription>Enter the details of the invoice you want to tokenize.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
+              
+              {/* --- IPFS File Uploader Section --- */}
+              <div className="space-y-2">
+                <Label>Upload Invoice (PDF)</Label>
+                {!file ? (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`
+                      border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
+                      flex flex-col items-center justify-center gap-2
+                      ${isDragging ? "border-primary bg-primary/10" : "border-muted-foreground/25 hover:bg-muted/50"}
+                    `}
+                  >
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="application/pdf"
+                      onChange={handleFileInput}
+                    />
+                    <div className="p-3 rounded-full bg-background border shadow-sm">
+                        <UploadCloud className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Click to upload or drag and drop</p>
+                      <p className="text-xs text-muted-foreground">PDF (max 10MB)</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-background/50">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-md bg-primary/10 text-primary">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium text-foreground">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(file.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+                    </div>
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={removeFile}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="w-5 h-5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {/* ---------------------------------- */}
+
               <div className="space-y-2">
                 <Label htmlFor="buyerAddress">Buyer's Wallet Address</Label>
                 <Input 
