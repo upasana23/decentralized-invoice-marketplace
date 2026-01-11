@@ -197,7 +197,7 @@ export default function MSMEDashboard() {
       {/* MSME Reputation Section - MUST be at bottom */}
   {/* Reputation & Investor Trust - Full Width Section */}
       <div className="pt-10">
-        <ReputationSection />
+        <ReputationSection walletAddress={address} />
       </div>
 
     </div>

@@ -2,11 +2,60 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Star, ShieldCheck, TrendingUp } from "lucide-react";
+import { useEffect, useState } from "react";
 
-export default function ReputationSection() {
-  const score = 82;
-  const rating = 4.6;
-  const onTimeRate = 95;
+type TrustStatsResponse = {
+  walletAddress: string;
+  totalInvoicesCreated: number;
+  totalInvoicesRepaid: number;
+  totalInvoicesDefaulted: number;
+  trustScore: number;
+};
+
+interface ReputationSectionProps {
+  walletAddress?: string | null;
+}
+
+export default function ReputationSection({ walletAddress }: ReputationSectionProps) {
+  const [stats, setStats] = useState<TrustStatsResponse | null>(null);
+
+  useEffect(() => {
+    if (!walletAddress) {
+      setStats(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadStats = async () => {
+      try {
+        const response = await fetch(`/api/trust/${walletAddress}`);
+        if (!response.ok) {
+          console.error("Failed to fetch trust stats", await response.text());
+          return;
+        }
+        const data = (await response.json()) as TrustStatsResponse;
+        if (!cancelled) {
+          setStats(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch trust stats", error);
+      }
+    };
+
+    loadStats();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [walletAddress]);
+
+  const score = stats ? Math.round(stats.trustScore * 100) : 0;
+  const onTimeRate =
+    stats && stats.totalInvoicesCreated > 0
+      ? Math.round((stats.totalInvoicesRepaid / stats.totalInvoicesCreated) * 100)
+      : 0;
+  const rating = stats ? parseFloat((stats.trustScore * 5).toFixed(1)) : 0;
 
   const getLevel = () => {
     if (score >= 80) return "Excellent";

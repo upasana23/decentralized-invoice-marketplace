@@ -115,6 +115,59 @@ export default function TokenizeInvoice() {
       return
     }
 
+    // Basic client-side validation to avoid on-chain reverts
+    if (!formData.buyerAddress || !/^0x[a-fA-F0-9]{40}$/.test(formData.buyerAddress)) {
+      toast({
+        title: "Invalid buyer address",
+        description: "Please enter a valid buyer wallet address.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    const amountNumber = Number(formData.amount)
+    if (!amountNumber || amountNumber <= 0) {
+      toast({
+        title: "Invalid amount",
+        description: "Amount must be greater than 0.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    const discountRateNumber = Number(formData.discountRate)
+    if (Number.isNaN(discountRateNumber) || discountRateNumber < 0 || discountRateNumber > 100) {
+      toast({
+        title: "Invalid discount rate",
+        description: "Discount rate must be between 0% and 100%.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    const selectedDate = new Date(formData.dueDate)
+    if (Number.isNaN(selectedDate.getTime())) {
+      toast({
+        title: "Invalid due date",
+        description: "Please select a valid due date in the future.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Treat the chosen date as end-of-day to ensure it is strictly in the future
+    const dueDateTimestamp = Math.floor(selectedDate.getTime() / 1000) + 24 * 60 * 60 - 1
+    const nowTimestamp = Math.floor(Date.now() / 1000)
+
+    if (dueDateTimestamp <= nowTimestamp) {
+      toast({
+        title: "Due date too soon",
+        description: "Due date must be strictly in the future (not earlier today).",
+        variant: "destructive"
+      })
+      return
+    }
+
     if (!window.ethereum) {
       toast({
         title: "Error",
@@ -188,8 +241,7 @@ export default function TokenizeInvoice() {
       
       // Convert values
       const amountInWei = ethers.parseEther(formData.amount)
-      const dueDateTimestamp = Math.floor(new Date(formData.dueDate).getTime() / 1000)
-      const discountRateBps = Math.floor(parseFloat(formData.discountRate) * 100)
+      const discountRateBps = Math.floor(discountRateNumber * 100)
       
       // Call the contract
       const tx = await contract.createInvoice(
@@ -213,15 +265,39 @@ export default function TokenizeInvoice() {
       console.error("Error creating invoice:", error)
       
       let errorMessage = "Failed to create invoice"
+
       if (error.code === 4001) {
         errorMessage = "Transaction was rejected"
-      } else if (error.message && error.message.includes("insufficient funds")) {
-        errorMessage = "Insufficient funds for transaction"
-      } else if (error.message) {
-        const match = error.message.match(/reason:"([^"]*)"/) || 
-                      error.message.match(/reverted with reason string '([^']*)'/) ||
-                      []
-        errorMessage = match[1] || error.message
+      } else {
+        const rawMessage = typeof error.message === "string" ? error.message : ""
+
+        if (rawMessage && rawMessage.toLowerCase().includes("insufficient funds")) {
+          errorMessage = "Insufficient funds for transaction"
+        } else {
+          const reasonMatch =
+            rawMessage.match(/reason:\"([^\"]*)\"/) ||
+            rawMessage.match(/reverted with reason string '([^']*)'/) ||
+            []
+
+          if (reasonMatch[1]) {
+            errorMessage = reasonMatch[1]
+          } else {
+            const nestedMessage =
+              error?.info?.error?.message ||
+              error?.error?.message ||
+              error?.shortMessage ||
+              ""
+
+            if (nestedMessage) {
+              errorMessage = nestedMessage
+            } else if (rawMessage && rawMessage.includes("Internal JSON-RPC error")) {
+              errorMessage =
+                "Transaction failed on-chain. Please double-check the buyer address, amount, and due date (must be in the future), then try again."
+            } else if (rawMessage) {
+              errorMessage = rawMessage
+            }
+          }
+        }
       }
       
       toast({

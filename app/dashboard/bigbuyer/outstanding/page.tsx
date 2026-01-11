@@ -15,6 +15,19 @@ import InvoiceMarketplaceABI from "@/lib/contracts/InvoiceMarketplace.json"
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string
 
+const PINATA_GATEWAY_BASE =
+  process.env.NEXT_PUBLIC_PINATA_GATEWAY_BASE_URL || "https://gateway.pinata.cloud/ipfs/"
+
+function getInvoiceDocumentUrl(invoice: Invoice): string {
+  const uri = invoice.metadataURI
+  if (!uri) return "#"
+  if (uri.startsWith("ipfs://")) {
+    const cid = uri.slice("ipfs://".length).split("/")[0]
+    return PINATA_GATEWAY_BASE.endsWith("/") ? `${PINATA_GATEWAY_BASE}${cid}` : `${PINATA_GATEWAY_BASE}/${cid}`
+  }
+  return uri
+}
+
 function formatAddress(addr: string) {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
 }
@@ -101,9 +114,46 @@ export default function BigBuyerOutstandingPage() {
       setInvoices(outstanding)
     } catch (error: any) {
       console.error("Repay error:", error)
+
+      let message = "Failed to repay invoice"
+
+      if (error.code === 4001) {
+        message = "Transaction was rejected"
+      } else {
+        const rawMessage = typeof error.message === "string" ? error.message : ""
+
+        if (rawMessage && rawMessage.toLowerCase().includes("insufficient funds")) {
+          message = "Insufficient funds for transaction"
+        } else {
+          const reasonMatch =
+            rawMessage.match(/reason:\"([^\"]*)\"/) ||
+            rawMessage.match(/reverted with reason string '([^']*)'/) ||
+            []
+
+          if (reasonMatch[1]) {
+            message = reasonMatch[1]
+          } else {
+            const nestedMessage =
+              error?.info?.error?.message ||
+              error?.error?.message ||
+              error?.shortMessage ||
+              ""
+
+            if (nestedMessage) {
+              message = nestedMessage
+            } else if (rawMessage && rawMessage.includes("Internal JSON-RPC error")) {
+              message =
+                "Transaction failed on-chain. Please double-check invoice status and the amount owed, then try again."
+            } else if (rawMessage) {
+              message = rawMessage
+            }
+          }
+        }
+      }
+
       toast({
         title: "Error",
-        description: error.message || "Failed to repay invoice",
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -256,7 +306,7 @@ export default function BigBuyerOutstandingPage() {
                             title="Opens the original invoice uploaded by the MSME for verification"
                           >
                             <a 
-                              href={`https://ipfs.io/ipfs/sample-invoice-${invoice.id}.pdf`}
+                              href={getInvoiceDocumentUrl(invoice)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center gap-1"

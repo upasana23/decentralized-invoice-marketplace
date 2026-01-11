@@ -18,7 +18,8 @@ type RouteContext = {
 
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
-    const parseResult = addressSchema.safeParse(context.params);
+    const params = await context.params;
+    const parseResult = addressSchema.safeParse(params);
 
     if (!parseResult.success) {
       return NextResponse.json(

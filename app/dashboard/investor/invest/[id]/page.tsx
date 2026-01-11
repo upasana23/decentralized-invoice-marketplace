@@ -6,6 +6,7 @@ import { useAccount, useWalletClient } from "wagmi";
 import { ethers } from "ethers";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +17,21 @@ import { fetchAllInvoices, Invoice, getStatusLabel, calculateDaysRemaining } fro
 import InvoiceMarketplaceABI from "@/lib/contracts/InvoiceMarketplace.json";
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string;
+
+const PINATA_GATEWAY_BASE =
+  process.env.NEXT_PUBLIC_PINATA_GATEWAY_BASE_URL || "https://gateway.pinata.cloud/ipfs/";
+
+function getInvoiceDocumentUrl(invoice: Invoice): string {
+  const uri = invoice.metadataURI;
+  if (!uri) return "#";
+  if (uri.startsWith("ipfs://")) {
+    const cid = uri.slice("ipfs://".length).split("/")[0];
+    return PINATA_GATEWAY_BASE.endsWith("/")
+      ? `${PINATA_GATEWAY_BASE}${cid}`
+      : `${PINATA_GATEWAY_BASE}/${cid}`;
+  }
+  return uri;
+}
 
 export default function InvestorInvestPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -93,9 +109,8 @@ export default function InvestorInvestPage({ params }: { params: Promise<{ id: s
 
   const daysRemaining = calculateDaysRemaining(invoice.dueDate);
   const statusLabel = getStatusLabel(invoice.status);
-  
-  // Mock IPFS URL for the invoice document
-  const invoiceDocumentUrl = `https://ipfs.io/ipfs/sample-invoice-${invoice.id}.pdf`;
+
+  const invoiceDocumentUrl = getInvoiceDocumentUrl(invoice);
 
   const handleInvest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,12 +175,43 @@ export default function InvestorInvestPage({ params }: { params: Promise<{ id: s
       router.push("/dashboard/investor/portfolio");
     } catch (error: any) {
       console.error("Investment error:", error);
+
       let message = "Failed to complete investment";
+
       if (error.code === 4001) {
         message = "Transaction was rejected";
-      } else if (error.message) {
-        message = error.message;
+      } else {
+        const rawMessage = typeof error.message === "string" ? error.message : "";
+
+        if (rawMessage && rawMessage.toLowerCase().includes("insufficient funds")) {
+          message = "Insufficient funds for transaction";
+        } else {
+          const reasonMatch =
+            rawMessage.match(/reason:\"([^\"]*)\"/) ||
+            rawMessage.match(/reverted with reason string '([^']*)'/) ||
+            [];
+
+          if (reasonMatch[1]) {
+            message = reasonMatch[1];
+          } else {
+            const nestedMessage =
+              error?.info?.error?.message ||
+              error?.error?.message ||
+              error?.shortMessage ||
+              "";
+
+            if (nestedMessage) {
+              message = nestedMessage;
+            } else if (rawMessage && rawMessage.includes("Internal JSON-RPC error")) {
+              message =
+                "Transaction failed on-chain. Please double-check the invoice status and your investment amount, then try again.";
+            } else if (rawMessage) {
+              message = rawMessage;
+            }
+          }
+        }
       }
+
       toast({
         title: "Error",
         description: message,

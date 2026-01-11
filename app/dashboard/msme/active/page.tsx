@@ -12,6 +12,19 @@ import { fetchInvoicesByMSME, Invoice, getStatusLabel, calculateDaysRemaining } 
 import { useToast } from "@/components/ui/use-toast"
 import Link from "next/link"
 
+const PINATA_GATEWAY_BASE =
+  process.env.NEXT_PUBLIC_PINATA_GATEWAY_BASE_URL || "https://gateway.pinata.cloud/ipfs/"
+
+function getInvoiceDocumentUrl(invoice: Invoice): string {
+  const uri = invoice.metadataURI
+  if (!uri) return "#"
+  if (uri.startsWith("ipfs://")) {
+    const cid = uri.slice("ipfs://".length).split("/")[0]
+    return PINATA_GATEWAY_BASE.endsWith("/") ? `${PINATA_GATEWAY_BASE}${cid}` : `${PINATA_GATEWAY_BASE}/${cid}`
+  }
+  return uri
+}
+
 function formatAddress(addr: string) {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
 }
@@ -250,7 +263,7 @@ export default function MSMEActiveInvoicesPage() {
                           title="Opens the original invoice uploaded by the MSME for verification"
                         >
                           <a 
-                            href={`https://ipfs.io/ipfs/sample-invoice-${invoice.id}.pdf`}
+                            href={getInvoiceDocumentUrl(invoice)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1"
