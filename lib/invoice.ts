@@ -60,7 +60,9 @@ export async function fetchAllInvoices(): Promise<Invoice[]> {
     const nextId = await contract.nextInvoiceId();
     const invoicePromises: Array<Promise<[number, any | null]>> = [];
 
-    for (let i = 1; i < Number(nextId); i++) {
+    // nextInvoiceId in the contract is the latest created invoice ID,
+    // so we need to iterate inclusively from 1..nextId.
+    for (let i = 1; i <= Number(nextId); i++) {
       const invoiceId = i;
       invoicePromises.push(
         contract.invoices(i)

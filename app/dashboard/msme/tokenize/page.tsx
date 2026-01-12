@@ -23,11 +23,24 @@ export default function TokenizeInvoice() {
   const { toast } = useToast()
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [txStatus, setTxStatus] = useState<
+    | "idle"
+    | "ipfs"
+    | "awaiting_signature"
+    | "pending"
+    | "confirming"
+    | "timeout"
+    | "success"
+    | "error"
+  >("idle")
+  const [txHash, setTxHash] = useState<string | null>(null)
+  const AMOY_EXPLORER_BASE_URL = "https://amoy.polygonscan.com"
   
   // --- New State for File Upload ---
   const [file, setFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  
   // -------------------------------
 
   const [formData, setFormData] = useState<InvoiceFormState>({
@@ -179,6 +192,8 @@ export default function TokenizeInvoice() {
 
     try {
       setIsSubmitting(true)
+      setTxHash(null)
+      setTxStatus("ipfs")
 
       // Connect to MetaMask
       const provider = new ethers.BrowserProvider(window.ethereum)
@@ -186,13 +201,20 @@ export default function TokenizeInvoice() {
       const network = await provider.getNetwork()
       
       // Check if connected to Polygon Amoy (chainId: 80002)
-      if (network.chainId.toString() !== '80002') {
-        toast({
-          title: "Wrong Network",
-          description: "Please switch to Polygon Amoy Testnet",
-          variant: "destructive"
-        })
-        return
+      if (network.chainId.toString() !== "80002") {
+        try {
+          await window.ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: "0x13882" }],
+          })
+        } catch (switchError: any) {
+          toast({
+            title: "Wrong Network",
+            description: "Please switch to Polygon Amoy Testnet in MetaMask and try again.",
+            variant: "destructive",
+          })
+          return
+        }
       }
       
       const msmeAddress = await signer.getAddress()
@@ -244,6 +266,7 @@ export default function TokenizeInvoice() {
       const discountRateBps = Math.floor(discountRateNumber * 100)
       
       // Call the contract
+      setTxStatus("awaiting_signature")
       const tx = await contract.createInvoice(
         formData.buyerAddress,
         amountInWei,
@@ -251,18 +274,65 @@ export default function TokenizeInvoice() {
         discountRateBps,
         metadataUri 
       )
+      setTxHash(tx.hash)
+      setTxStatus("pending")
+
+      toast({
+        title: "Transaction Submitted",
+        description: "Waiting for confirmation on Polygon Amoy. This may take a little longer on testnets.",
+      })
+
+      const TX_TIMEOUT_MS = 120000
+
+      let receiptOrTimeout: any
+      try {
+        receiptOrTimeout = await Promise.race([
+          tx.wait(),
+          new Promise<"timeout">((resolve) =>
+            setTimeout(() => resolve("timeout"), TX_TIMEOUT_MS)
+          ),
+        ])
+      } catch (waitError: any) {
+        console.error("Error while waiting for transaction:", waitError)
+        throw waitError
+      }
+
+      if (receiptOrTimeout === "timeout") {
+        setTxStatus("timeout")
+
+        toast({
+          title: "Transaction Pending",
+          description:
+            "Your transaction was submitted but is taking longer than expected to confirm. You can keep this tab open or track it in the block explorer.",
+        })
+
+        return
+      }
+
+      setTxStatus("confirming")
+
+      toast({
+        title: "Transaction Mined",
+        description: "Waiting for network synchronization...",
+      })
+
+      // 2. Add an artificial delay (3-5 seconds) to allow RPC nodes to sync
+      // Polygon Amoy is a testnet and can be slower than Mainnet
+      await new Promise((resolve) => setTimeout(resolve, 5000));
       
-      await tx.wait()
-      
+      setTxStatus("success")
+
       toast({
         title: "Success!",
         description: "Invoice created successfully on the blockchain.",
       })
+      router.refresh();
       
       router.push("/dashboard/msme/active")
       
     } catch (error: any) {
       console.error("Error creating invoice:", error)
+      setTxStatus("error")
       
       let errorMessage = "Failed to create invoice"
 
@@ -273,6 +343,15 @@ export default function TokenizeInvoice() {
 
         if (rawMessage && rawMessage.toLowerCase().includes("insufficient funds")) {
           errorMessage = "Insufficient funds for transaction"
+        } else if (
+          error.code === "NETWORK_ERROR" ||
+          (rawMessage &&
+            (rawMessage.toLowerCase().includes("could not connect") ||
+              rawMessage.toLowerCase().includes("timeout") ||
+              rawMessage.toLowerCase().includes("failed to fetch")))
+        ) {
+          errorMessage =
+            "Network or RPC error. Your current RPC endpoint may be slow or unavailable. Please try again or switch to a different RPC in MetaMask."
         } else {
           const reasonMatch =
             rawMessage.match(/reason:\"([^\"]*)\"/) ||
@@ -473,29 +552,60 @@ export default function TokenizeInvoice() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-4">
-            <Button 
-              variant="outline" 
-              type="button"
-              onClick={() => router.back()}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button 
-              type="submit" 
-              disabled={isSubmitting} 
-              className="min-w-[150px]"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                'Create Invoice'
-              )}
-            </Button>
+          <div className="flex flex-col gap-2 items-end">
+            <div className="flex justify-end gap-4 w-full">
+              <Button 
+                variant="outline" 
+                type="button"
+                onClick={() => router.back()}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={isSubmitting} 
+                className="min-w-[150px]"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Create Invoice'
+                )}
+              </Button>
+            </div>
+            {(isSubmitting || txStatus === "timeout") && (
+              <p className="text-xs text-muted-foreground text-right max-w-md">
+                {txStatus === "ipfs" && "Uploading invoice to IPFS..."}
+                {txStatus === "awaiting_signature" && "Please confirm the transaction in MetaMask."}
+                {txStatus === "pending" &&
+                  "Transaction submitted. Waiting for confirmation on Polygon Amoy. This may take a minute."}
+                {txStatus === "confirming" &&
+                  "Transaction confirmed. Finalizing and synchronizing with the network..."}
+                {txStatus === "timeout" && (
+                  <>
+                    Transaction is taking longer than expected to confirm. You can check it in the block explorer
+                    {txHash && (
+                      <>
+                        {" "}
+                        <a
+                          href={`${AMOY_EXPLORER_BASE_URL}/tx/${txHash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline"
+                        >
+                          here
+                        </a>
+                        .
+                      </>
+                    )}
+                  </>
+                )}
+              </p>
+            )}
           </div>
         </div>
       </form>
