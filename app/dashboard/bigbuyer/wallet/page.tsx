@@ -7,7 +7,7 @@ import { formatEther } from "viem"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Wallet, ExternalLink, Copy, Check, TrendingUp } from "lucide-react"
+import { Wallet, ExternalLink, Copy, Check, TrendingUp, ArrowUpRight } from "lucide-react"
 import { fetchInvoicesByBuyer, Invoice } from "@/lib/invoice"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -95,95 +95,94 @@ export default function BigBuyerWalletPage() {
 
   const polygonScanUrl = `https://amoy.polygonscan.com/address/${address}`
   return (
-    <div className="min-h-screen bg-[#050505] relative overflow-hidden text-white">
-      <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#FF4D00] opacity-[0.08] blur-[120px]" />
-      <div className="absolute top-1/2 right-0 w-[400px] h-[400px] rounded-full bg-[#FF8A00] opacity-[0.05] blur-[100px]" />
+    <div className="min-h-screen bg-[#080808] relative overflow-hidden text-white">
+      {/* Background Ambient Glows */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-orange-600/25 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[10%] right-[-5%] w-[30%] h-[40%] bg-yellow-600/15 blur-[100px] rounded-full" />
+      </div>
 
       <main className="relative z-10 p-6 space-y-8">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 via-orange-500 to-red-600 bg-clip-text text-transparent">
+          <h1 className="text-3xl font-black tracking-tight text-white uppercase italic">
             Wallet & Payments
           </h1>
-          <p className="text-gray-400 mt-2">Manage your payment wallet and transaction history</p>
+          <p className="text-neutral-500 font-medium mt-1">Manage your payment wallet and transaction history</p>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <Card className="bg-black/40 backdrop-blur-md border border-orange-500/20 rounded-2xl p-6 shadow-[0_0_20px_rgba(255,77,0,0.05)] hover:shadow-[0_0_30px_rgba(255,77,0,0.15)] transition-all duration-300">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Wallet className="size-5 text-[#FFD600]" />
-                <span className="text-orange-400 font-bold">Wallet Balance</span>
-              </CardTitle>
-              <CardDescription className="text-orange-300">Your native POL balance</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm text-orange-200 mb-1">POL Balance</p>
-                {isLoadingBalance ? (
-                  <Skeleton className="h-12 w-48" />
-                ) : (
-                  <p className="text-4xl font-extrabold text-white">
-                    {balanceData ? parseFloat(formatEther(BigInt(balanceData.value))).toFixed(4) : "0.0000"} POL
-                  </p>
+          <div className="relative overflow-hidden rounded-[2.5rem] bg-white/[0.03] border border-white/10 backdrop-blur-3xl transition-all duration-300 hover:border-orange-500/50 hover:bg-white/[0.05] hover:shadow-[0_0_30px_rgba(234,88,12,0.15)] group p-8">
+            <div className="flex justify-between items-start mb-6">
+              <div className="p-3 rounded-2xl bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors">
+                <Wallet className="size-6 text-orange-500" />
+              </div>
+              <ArrowUpRight className="size-5 text-neutral-600 group-hover:text-orange-400" />
+            </div>
+            <p className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Wallet Balance</p>
+            <div className="mt-4">
+              <p className="text-sm text-neutral-500 mb-2">POL Balance</p>
+              {isLoadingBalance ? (
+                <Skeleton className="h-12 w-48" />
+              ) : (
+                <p className="text-4xl font-extrabold text-white">
+                  {balanceData ? parseFloat(formatEther(BigInt(balanceData.value))).toFixed(4) : "0.0000"} POL
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                onClick={() => window.open(polygonScanUrl, "_blank")}
+              >
+                <ExternalLink className="size-4 mr-2" />
+                View on Explorer
+              </Button>
+            </div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-[2.5rem] bg-white/[0.03] border border-white/10 backdrop-blur-3xl transition-all duration-300 hover:border-orange-500/50 hover:bg-white/[0.05] hover:shadow-[0_0_30px_rgba(234,88,12,0.15)] group p-8">
+            <div className="flex justify-between items-start mb-6">
+              <div className="p-3 rounded-2xl bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors">
+                <Wallet className="size-6 text-orange-500" />
+              </div>
+              <ArrowUpRight className="size-5 text-neutral-600 group-hover:text-orange-400" />
+            </div>
+            <p className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Connected Wallet</p>
+            <div className="mt-4">
+              <p className="text-sm text-neutral-500 mb-2">Wallet Address</p>
+              <div className="flex items-center gap-2">
+                <code className="text-xs bg-black/20 px-3 py-2 rounded border border-orange-500/50 flex-1 font-mono">
+                  {address ? formatFullAddress(address) : "Not connected"}
+                </code>
+                {address && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={copyAddress}
+                    title="Copy address"
+                    className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                  >
+                    {copied ? (
+                      <Check className="size-4 text-green-400" />
+                    ) : (
+                      <Copy className="size-4" />
+                    )}
+                  </Button>
                 )}
               </div>
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
-                  onClick={() => window.open(polygonScanUrl, "_blank")}
-                >
-                  <ExternalLink className="size-4 mr-2" />
-                  View on Explorer
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-black/40 backdrop-blur-md border border-orange-500/20 rounded-2xl p-6 shadow-[0_0_20px_rgba(255,77,0,0.05)] hover:shadow-[0_0_30px_rgba(255,77,0,0.15)] transition-all duration-300">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Wallet className="size-5 text-[#FFD600]" />
-                <span className="text-orange-400 font-bold">Connected Wallet</span>
-              </CardTitle>
-              <CardDescription className="text-orange-300">Your blockchain wallet address</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm text-orange-200 mb-1">Wallet Address</p>
-                <div className="flex items-center gap-2">
-                  <code className="text-xs bg-muted px-3 py-2 rounded border border-orange-500/50 flex-1 font-mono">
-                    {address ? formatFullAddress(address) : "Not connected"}
-                  </code>
-                  {address && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={copyAddress}
-                      title="Copy address"
-                      className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
-                    >
-                      {copied ? (
-                        <Check className="size-4 text-green-400" />
-                      ) : (
-                        <Copy className="size-4" />
-                      )}
-                    </Button>
-                  )}
-                </div>
-              </div>
-              {address && (
-                <Button
-                  variant="outline"
-                  className="w-full border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
-                  onClick={() => window.open(polygonScanUrl, "_blank")}
-                >
-                  <ExternalLink className="size-4 mr-2" />
-                  View on PolygonScan
-                </Button>
-              )}
-            </CardContent>
-          </Card>
+            </div>
+            {address && (
+              <Button
+                variant="outline"
+                className="w-full border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                onClick={() => window.open(polygonScanUrl, "_blank")}
+              >
+                <ExternalLink className="size-4 mr-2" />
+                View on PolygonScan
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
