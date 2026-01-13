@@ -1,6 +1,7 @@
 // app/dashboard/msme/page.tsx
 "use client";
 import ReputationSection from "@/components/msme/ReputationSection";
+import { DashboardChatSection } from "@/components/chat/DashboardChatSection";
 
 import { useEffect, useState } from "react";
 import { useAccount, usePublicClient } from "wagmi";
@@ -194,6 +195,11 @@ export default function MSMEDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {address && (
+        <DashboardChatSection walletAddress={address} role="msme" />
+      )}
+
       {/* MSME Reputation Section - MUST be at bottom */}
   {/* Reputation & Investor Trust - Full Width Section */}
       <div className="pt-10">

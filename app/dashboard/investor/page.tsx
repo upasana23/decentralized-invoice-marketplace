@@ -10,6 +10,7 @@ import { TrendingUp, PieChart, ShieldCheck, DollarSign, Wallet, FileText } from 
 import { fetchAllInvoices, fetchInvestmentAmount, Invoice } from "@/lib/invoice"
 import { useToast } from "@/components/ui/use-toast"
 import Link from "next/link"
+import { DashboardChatSection } from "@/components/chat/DashboardChatSection"
 
 export default function InvestorDashboard() {
   const { address, isConnected } = useAccount()
@@ -179,6 +180,10 @@ export default function InvestorDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {address && (
+        <DashboardChatSection walletAddress={address} role="investor" />
+      )}
     </div>
   )
 }

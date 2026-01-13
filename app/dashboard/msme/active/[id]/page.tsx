@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Wallet, ArrowLeft, FileText, ExternalLink } from "lucide-react"
 import { fetchAllInvoices, Invoice, getStatusLabel, calculateDaysRemaining } from "@/lib/invoice"
+import { MSMEInvoiceChatWidget } from "@/components/marketplace/MSMEInvoiceChatWidget"
 
 const PINATA_GATEWAY_BASE =
   process.env.NEXT_PUBLIC_PINATA_GATEWAY_BASE_URL || "https://gateway.pinata.cloud/ipfs/"
@@ -59,7 +60,7 @@ export default function MSMEInvoiceDetailPage({
   const invoiceId = Number(id)
 
   const router = useRouter()
-  const { isConnected } = useAccount()
+  const { address, isConnected } = useAccount()
 
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [metadata, setMetadata] = useState<InvoiceMetadata | null>(null)
@@ -266,6 +267,14 @@ export default function MSMEInvoiceDetailPage({
           </div>
         </CardContent>
       </Card>
+
+      {address && (
+        <MSMEInvoiceChatWidget
+          invoiceId={invoice.id}
+          invoiceMsmeAddress={invoice.msme}
+          currentMsmeAddress={address}
+        />
+      )}
     </div>
   )
 }
