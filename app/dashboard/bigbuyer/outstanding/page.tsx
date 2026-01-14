@@ -1,19 +1,33 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { motion } from "framer-motion"
 import { useAccount, useWalletClient } from "wagmi"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Eye, CreditCard, Wallet, FileText, DollarSign, Clock, CheckCircle2, ArrowUpRight } from "lucide-react"
+import { Eye, CreditCard, Wallet, FileText, ExternalLink } from "lucide-react"
 import { fetchInvoicesByBuyer, Invoice, getStatusLabel, calculateDaysRemaining } from "@/lib/invoice"
 import { useToast } from "@/components/ui/use-toast"
 import { ethers } from "ethers"
 import InvoiceMarketplaceABI from "@/lib/contracts/InvoiceMarketplace.json"
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string
+
+const PINATA_GATEWAY_BASE =
+  process.env.NEXT_PUBLIC_PINATA_GATEWAY_BASE_URL || "https://gateway.pinata.cloud/ipfs/"
+
+function getInvoiceDocumentUrl(invoice: Invoice): string {
+  const uri = invoice.metadataURI
+  if (!uri) return "#"
+  if (uri.startsWith("ipfs://")) {
+    const cid = uri.slice("ipfs://".length).split("/")[0]
+    return PINATA_GATEWAY_BASE.endsWith("/") ? `${PINATA_GATEWAY_BASE}${cid}` : `${PINATA_GATEWAY_BASE}/${cid}`
+  }
+  return uri
+}
 
 function formatAddress(addr: string) {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
@@ -101,9 +115,46 @@ export default function BigBuyerOutstandingPage() {
       setInvoices(outstanding)
     } catch (error: any) {
       console.error("Repay error:", error)
+
+      let message = "Failed to repay invoice"
+
+      if (error.code === 4001) {
+        message = "Transaction was rejected"
+      } else {
+        const rawMessage = typeof error.message === "string" ? error.message : ""
+
+        if (rawMessage && rawMessage.toLowerCase().includes("insufficient funds")) {
+          message = "Insufficient funds for transaction"
+        } else {
+          const reasonMatch =
+            rawMessage.match(/reason:\"([^\"]*)\"/) ||
+            rawMessage.match(/reverted with reason string '([^']*)'/) ||
+            []
+
+          if (reasonMatch[1]) {
+            message = reasonMatch[1]
+          } else {
+            const nestedMessage =
+              error?.info?.error?.message ||
+              error?.error?.message ||
+              error?.shortMessage ||
+              ""
+
+            if (nestedMessage) {
+              message = nestedMessage
+            } else if (rawMessage && rawMessage.includes("Internal JSON-RPC error")) {
+              message =
+                "Transaction failed on-chain. Please double-check invoice status and the amount owed, then try again."
+            } else if (rawMessage) {
+              message = rawMessage
+            }
+          }
+        }
+      }
+
       toast({
         title: "Error",
-        description: error.message || "Failed to repay invoice",
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -149,80 +200,72 @@ export default function BigBuyerOutstandingPage() {
     )
   }
   return (
-    <div className="min-h-screen bg-[#080808] relative overflow-hidden text-white selection:bg-orange-500/30">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-orange-600/25 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[10%] right-[-5%] w-[30%] h-[40%] bg-yellow-600/15 blur-[100px] rounded-full" />
-      </div>
+    <div className="min-h-screen bg-[#050505] relative overflow-hidden text-white">
+      <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#FF4D00] opacity-[0.08] blur-[120px]" />
+      <div className="absolute top-1/2 right-0 w-[400px] h-[400px] rounded-full bg-[#FF8A00] opacity-[0.05] blur-[100px]" />
 
       <main className="relative z-10 p-6 space-y-8">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-white uppercase italic">Outstanding Invoices</h1>
-          <p className="text-neutral-500 font-medium mt-1">View and pay invoices owed to MSMEs</p>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 via-orange-500 to-red-600 bg-clip-text text-transparent">
+            Outstanding Invoices
+          </h1>
+          <p className="text-gray-400 mt-2">View and pay invoices owed to MSMEs</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-3">
-          <div className="relative overflow-hidden rounded-[2.5rem] bg-white/[0.03] border border-white/10 backdrop-blur-3xl transition-all duration-300 hover:border-orange-500/50 hover:bg-white/[0.05] hover:shadow-[0_0_30px_rgba(234,88,12,0.15)] group p-8">
-            <div className="flex justify-between items-start mb-6">
-              <div className="p-3 rounded-2xl bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors">
-                <DollarSign className="size-6 text-orange-500" />
-              </div>
-              <ArrowUpRight className="size-5 text-neutral-600 group-hover:text-orange-400" />
-            </div>
-            <p className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Total Outstanding</p>
-            <div className="text-3xl font-bold tracking-tighter text-white mt-2">{totalOutstanding.toFixed(2)} MATIC</div>
-            <p className="text-xs text-neutral-500 mt-2">
-              {invoices.length} {invoices.length === 1 ? "invoice" : "invoices"}
-            </p>
-          </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="bg-black/40 backdrop-blur-md border border-orange-500/20 rounded-2xl p-6 shadow-[0_0_20px_rgba(255,77,0,0.05)] hover:shadow-[0_0_30px_rgba(255,77,0,0.15)] transition-all duration-300">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-orange-400">Total Outstanding</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-extrabold text-white">{totalOutstanding.toFixed(2)} MATIC</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {invoices.length} {invoices.length === 1 ? "invoice" : "invoices"}
+              </p>
+            </CardContent>
+          </Card>
 
-          <div className="relative overflow-hidden rounded-[2.5rem] bg-white/[0.03] border border-white/10 backdrop-blur-3xl transition-all duration-300 hover:border-orange-500/50 hover:bg-white/[0.05] hover:shadow-[0_0_30px_rgba(234,88,12,0.15)] group p-8">
-            <div className="flex justify-between items-start mb-6">
-              <div className="p-3 rounded-2xl bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors">
-                <Clock className="size-6 text-orange-500" />
+          <Card className="bg-black/40 backdrop-blur-md border border-orange-500/20 rounded-2xl p-6 shadow-[0_0_20px_rgba(255,77,0,0.05)] hover:shadow-[0_0_30px_rgba(255,77,0,0.15)] transition-all duration-300">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-orange-400">Fundraising</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-extrabold text-white">
+                {invoices.filter((inv) => inv.status === 1).length}
               </div>
-              <ArrowUpRight className="size-5 text-neutral-600 group-hover:text-orange-400" />
-            </div>
-            <p className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Fundraising</p>
-            <div className="text-3xl font-bold tracking-tighter text-white mt-2">{invoices.filter((inv) => inv.status === 1).length}</div>
-            <p className="text-xs text-neutral-500 mt-2">Awaiting funding</p>
-          </div>
+              <p className="text-xs text-muted-foreground mt-1">Awaiting funding</p>
+            </CardContent>
+          </Card>
 
-          <div className="relative overflow-hidden rounded-[2.5rem] bg-white/[0.03] border border-white/10 backdrop-blur-3xl transition-all duration-300 hover:border-orange-500/50 hover:bg-white/[0.05] hover:shadow-[0_0_30px_rgba(234,88,12,0.15)] group p-8">
-            <div className="flex justify-between items-start mb-6">
-              <div className="p-3 rounded-2xl bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors">
-                <CheckCircle2 className="size-6 text-orange-500" />
+          <Card className="bg-black/40 backdrop-blur-md border border-orange-500/20 rounded-2xl p-6 shadow-[0_0_20px_rgba(255,77,0,0.05)] hover:shadow-[0_0_30px_rgba(255,77,0,0.15)] transition-all duration-300">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-orange-400">Funded</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-extrabold text-white">
+                {invoices.filter((inv) => inv.status === 2).length}
               </div>
-              <ArrowUpRight className="size-5 text-neutral-600 group-hover:text-orange-400" />
-            </div>
-            <p className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Funded</p>
-            <div className="text-3xl font-bold tracking-tighter text-white mt-2">{invoices.filter((inv) => inv.status === 2).length}</div>
-            <p className="text-xs text-neutral-500 mt-2">Ready to repay</p>
-          </div>
+              <p className="text-xs text-muted-foreground mt-1">Ready to repay</p>
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="relative overflow-hidden rounded-[2.5rem] bg-white/[0.03] border border-white/10 backdrop-blur-3xl transition-all duration-300 hover:border-orange-500/50 hover:bg-white/[0.05] hover:shadow-[0_0_30px_rgba(234,88,12,0.15)] p-8">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <div className="size-2 rounded-full bg-orange-500 shadow-[0_0_10px_orange]" />
-              <h3 className="text-xl font-bold tracking-tight text-white">Invoices Awaiting Payment</h3>
-            </div>
-            <Badge className="bg-orange-500/10 text-orange-500 border-none px-4 py-1">{invoices.length} Active</Badge>
-          </div>
-
-          <div>
-            <p className="text-orange-400 font-bold mb-2">Outstanding Summary</p>
-            <p className="text-neutral-500">
+        <Card className="bg-black/40 backdrop-blur-md border border-orange-500/20 rounded-2xl p-6 shadow-[0_0_20px_rgba(255,77,0,0.05)]">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-[#FFD600]" />
+              <span className="text-orange-400 font-bold">Invoices Awaiting Payment</span>
+            </CardTitle>
+            <CardDescription className="text-orange-300">
               Total outstanding: {totalOutstanding.toFixed(2)} MATIC across {invoices.length} {invoices.length === 1 ? "invoice" : "invoices"}
-            </p>
-          </div>
-
-          <div className="mt-6">
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             {invoices.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 space-y-4 opacity-70">
-                <FileText className="h-12 w-12 text-orange-500" />
-                <h3 className="text-lg font-medium text-white">No outstanding invoices</h3>
-                <p className="text-sm text-neutral-500 text-center max-w-md">
+              <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                <FileText className="h-12 w-12 text-muted-foreground" />
+                <h3 className="text-lg font-medium">No outstanding invoices</h3>
+                <p className="text-sm text-muted-foreground text-center max-w-md">
                   You don't have any invoices that require payment.
                 </p>
               </div>
@@ -248,10 +291,7 @@ export default function BigBuyerOutstandingPage() {
                       const canRepay = invoice.status === 2
 
                       return (
-                        <TableRow
-                          key={invoice.id}
-                          className="border-b border-orange-500/10 hover:bg-black/30 transition-colors"
-                        >
+                        <TableRow key={invoice.id} className="border-b border-orange-500/10 hover:bg-black/30 transition-colors">
                           <TableCell className="font-medium font-mono text-xs text-white">#{invoice.id}</TableCell>
                           <TableCell className="font-mono text-xs text-orange-200">{formatAddress(invoice.msme)}</TableCell>
                           <TableCell className="text-right font-semibold text-white">
@@ -264,22 +304,38 @@ export default function BigBuyerOutstandingPage() {
                             </span>
                           </TableCell>
                           <TableCell className="text-center">
-                            <Badge
-                              variant={isLate ? "destructive" : statusLabel === "Funded" ? "default" : "outline"}
-                              className={`${isLate ? "animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]" : ""}`}
-                            >
+                            <Badge variant={isLate ? "destructive" : statusLabel === "Funded" ? "default" : "outline"} 
+                                   className={`${isLate ? 'animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]' : ''}`}>
                               {isLate ? "Late" : statusLabel}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex gap-2 justify-end">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                asChild
+                                title="Opens the original invoice uploaded by MSME for verification"
+                                className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                              >
+                                <a 
+                                  href={getInvoiceDocumentUrl(invoice)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1"
+                                >
+                                  <FileText className="size-3" />
+                                  View
+                                  <ExternalLink className="size-2.5" />
+                                </a>
+                              </Button>
                               {canRepay && (
                                 <Button
                                   size="sm"
                                   variant="default"
                                   onClick={() => handleRepay(invoice.id)}
                                   disabled={repaying === invoice.id}
-                                  className="bg-orange-600 hover:bg-orange-500 shadow-[0_0_20px_rgba(234,88,12,0.4)]"
+                                  className="shadow-[0_0_10px_rgba(255,138,0,0.3)] hover:shadow-[0_0_15px_rgba(255,138,0,0.5)]"
                                 >
                                   <CreditCard className="size-3 mr-1" />
                                   {repaying === invoice.id ? "Repaying..." : "Repay"}
@@ -294,8 +350,8 @@ export default function BigBuyerOutstandingPage() {
                 </Table>
               </div>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </main>
     </div>
   )

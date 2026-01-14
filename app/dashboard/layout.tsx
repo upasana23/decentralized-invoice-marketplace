@@ -105,25 +105,16 @@ export default function DashboardLayout({
 
       <SidebarInset>
         {/* Header */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/5 px-4 bg-transparent">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b px-4 bg-background">
           {/* Left: Sidebar trigger + breadcrumb */}
           <div className="flex items-center gap-2">
-            <SidebarTrigger 
-              className="-ml-1 !text-white !hover:text-orange-400 !hover:bg-white/10 !size-8 !p-2 !border !border-white/20" 
-              style={{ 
-                backgroundColor: 'transparent',
-                color: 'white',
-                padding: '8px',
-                minWidth: '32px',
-                minHeight: '32px'
-              }}
-            />
-            <Separator orientation="vertical" className="h-4 mx-2 bg-white/20" />
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="h-4 mx-2" />
 
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem>
-                  <BreadcrumbPage className="text-white font-medium">
+                  <BreadcrumbPage>
                     {user.role === "msme"
                       ? "MSME Portal - POL"
                       : user.role === "investor"
