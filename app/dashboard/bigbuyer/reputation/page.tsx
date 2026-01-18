@@ -80,8 +80,7 @@ export default function BigBuyerReputationPage() {
       </div>
     )
   }
-
-  damnnnnnnnn
+  
 
   if (isLoading) {
     return (
