@@ -52,7 +52,7 @@ export function AppSidebar({ role }: { role: UserRole }) {
     <Sidebar variant="inset" collapsible="icon" className="w-64 bg-black/20 backdrop-blur-md border-r border-white/5">
       <SidebarHeader className="h-16 border-b border-white/5 px-4 flex items-center justify-between">
         <div className="flex items-center gap-2 font-bold text-2xl tracking-tight">
-          <span className="group-data-[collapsible=icon]:hidden font-pirate bg-gradient-to-r from-[#FFD600] via-[#FF8A00] to-[#FF4D00] bg-clip-text text-transparent">CredX</span>
+          <span className="group-data-[collapsible=icon]:hidden font-pirate text-white">CredX</span>
         </div>
       </SidebarHeader>
       <SidebarContent>
